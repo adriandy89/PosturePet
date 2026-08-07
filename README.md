@@ -576,6 +576,9 @@ tiene privilegio de enlace simbólico y por tanto nunca cae en `build:nosign`.
 Se dispara con un tag de versión:
 
 ```bash
+# 1. Reescribe la sección «Novedades» de .github/RELEASE_NOTES.md: se publica
+#    tal cual, así que si no se toca, la release nueva sale con las de la
+#    anterior.
 npm version patch                       # sube package.json y crea el tag
 git push origin main --tags
 ```

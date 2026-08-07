@@ -1,7 +1,37 @@
+<!--
+  Estas notas se publican tal cual en CADA release (.github/workflows/release.yml
+  las lee de aquí). La sección «Novedades» hay que reescribirla al preparar la
+  versión; el resto es evergreen y no se toca.
+-->
+
 **Monitor de postura local con webcam para Windows.** Te avisa cuando llevas
 rato encorvado o con la cabeza adelantada. Todo el procesamiento ocurre en tu
 máquina: ni nube, ni cuentas, ni telemetría, y la imagen de la cámara no se
 guarda ni se transmite nunca.
+
+## Novedades
+
+**La app habla inglés y español.** Se cambia en Ajustes → Sistema, al momento y
+sin reiniciar. Por defecto sigue al idioma de Windows.
+
+**Calibrar ya no es a ciegas.** Ahora ves tu webcam en vivo con el esqueleto que
+el detector reconoce dibujado encima, y una cuenta atrás 3-2-1 que **espera a
+que la cámara te vea bien** antes de empezar: te veo, hombros dentro del
+encuadre, cara de frente, distancia correcta. Si te giras a mitad de la cuenta,
+se para en vez de fijar una postura que no ibas a mantener. Se puede cancelar,
+avisa si te moviste demasiado, y hay un «Deshacer» si la nueva calibración sale
+peor que la anterior.
+
+**Los ajustes están en pestañas** en vez de una sola página con scroll
+interminable, y ahora se puede tocar el doble de cosas: el sonido del aviso
+(volumen, tono, duración), la velocidad del oscurecido, los umbrales de mala
+postura, cuánto dura la calibración y cuánta CPU gasta la detección. Cada
+sección tiene su propio «Restaurar», que nunca toca tus perfiles ni tu
+calibración.
+
+**Un botón de buscar actualizaciones**, en el icono ⓘ de arriba a la derecha.
+Es la **única** conexión de red que llega a hacer la app, y solo si la pulsas
+tú: nunca al arrancar, nunca en segundo plano.
 
 ## Qué descargar
 
