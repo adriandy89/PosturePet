@@ -153,11 +153,44 @@ module.exports = {
 
     tabs: {
       posture: 'Postura',
+      avatar: 'Personaje',
       alerts: 'Avisos',
       sensitivity: 'Sensibilidad',
       times: 'Tiempos',
       camera: 'Cámara',
       system: 'Sistema',
+    },
+
+    avatar: {
+      title: 'Personaje',
+      hint:
+        'El muñeco que flota en pantalla. Todos reaccionan igual —se encorvan ' +
+        'cuando te encorvas—, así que elige el que te apetezca tener delante ' +
+        'ocho horas. Se cambia al momento.',
+      previewLabel: 'Ver cómo reaccionan',
+      states: {
+        good: 'Buena postura',
+        warn: 'Empezando a encorvarte',
+        bad: 'Postura mala',
+        paused: 'En pausa',
+        blind: 'Sin verte',
+      },
+      names: {
+        blob: 'Blob',
+        cat: 'Gato',
+        owl: 'Búho',
+        plant: 'Planta',
+        turtle: 'Tortuga',
+        robot: 'Robot',
+      },
+      notes: {
+        blob: 'El de siempre. Simple y sin distraer.',
+        cat: 'Baja las orejas cuando la cosa va mal.',
+        owl: 'Ojos enormes: se le nota muchísimo la mirada.',
+        plant: 'Se marchita y se le caen las hojas. El más expresivo sin decir nada.',
+        turtle: 'Esconde la cabeza en el caparazón: justo lo que mide la app.',
+        robot: 'Se le enciende la antena y suelta chispas.',
+      },
     },
 
     resetSection: 'Restaurar esta sección',

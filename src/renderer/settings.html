@@ -7,6 +7,9 @@
       content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:;"
     />
     <title>PosturePet</title>
+    <!-- El mismo CSS que usa la ventana del personaje: la rejilla de selección
+         tiene que enseñar exactamente lo que se va a ver luego en pantalla. -->
+    <link rel="stylesheet" href="./avatar.css" />
     <link rel="stylesheet" href="./settings.css" />
   </head>
   <body>
@@ -44,6 +47,8 @@
     <nav id="tabs" role="tablist" aria-label="PosturePet">
       <button role="tab" id="tab-posture" aria-controls="panel-posture"
               data-i18n="settings.tabs.posture"></button>
+      <button role="tab" id="tab-avatar" aria-controls="panel-avatar"
+              data-i18n="settings.tabs.avatar"></button>
       <button role="tab" id="tab-alerts" aria-controls="panel-alerts"
               data-i18n="settings.tabs.alerts"></button>
       <button role="tab" id="tab-sensitivity" aria-controls="panel-sensitivity"
@@ -87,6 +92,24 @@
           <p class="hint" data-i18n="settings.live.hint"></p>
           <div class="metrics" data-metrics></div>
           <p class="note" id="glance-note" hidden></p>
+        </section>
+      </div>
+
+      <!-- ------------------------------------------------------ PERSONAJE -->
+      <div class="panel" id="panel-avatar" role="tabpanel" aria-labelledby="tab-avatar" hidden>
+        <section>
+          <h2 data-i18n="settings.avatar.title"></h2>
+          <p class="hint" data-i18n="settings.avatar.hint"></p>
+
+          <!--
+            Los estados no son decoración: se elige personaje por cómo se ve
+            cuando te está riñendo, no por cómo se ve quieto. Pulsar un estado
+            lo aplica a los seis a la vez para poder compararlos.
+          -->
+          <div class="row" id="avatar-states" role="group"
+               data-i18n-title="settings.avatar.previewLabel"></div>
+
+          <div id="avatar-grid"></div>
         </section>
       </div>
 

@@ -16,6 +16,11 @@ const DEFAULTS = Object.freeze({
   // null = seguir el idioma del sistema. Un codigo ('es', 'en') lo fija.
   locale: null,
 
+  // Que personaje se dibuja. Los ids viven en src/renderer/avatars.mjs; uno
+  // desconocido cae al de fabrica en el propio renderer, asi que no hace falta
+  // que este modulo -- que es del proceso principal -- conozca el elenco.
+  avatar: 'blob',
+
   // Cada superficie de aviso se apaga por separado.
   alerts: Object.freeze({
     tray: true,

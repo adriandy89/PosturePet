@@ -11,27 +11,22 @@ guarda ni se transmite nunca.
 
 ## Novedades
 
-**La app habla inglés y español.** Se cambia en Ajustes → Sistema, al momento y
-sin reiniciar. Por defecto sigue al idioma de Windows.
+**Seis personajes para elegir**, en la pestaña nueva de Ajustes → Personaje:
+Blob (el de siempre), Gato, Búho, Planta, Tortuga y Robot. La rejilla deja
+probar cada estado antes de decidir, porque un personaje se elige por cómo se
+ve cuando te está riñendo, no por cómo se ve quieto.
 
-**Calibrar ya no es a ciegas.** Ahora ves tu webcam en vivo con el esqueleto que
-el detector reconoce dibujado encima, y una cuenta atrás 3-2-1 que **espera a
-que la cámara te vea bien** antes de empezar: te veo, hombros dentro del
-encuadre, cara de frente, distancia correcta. Si te giras a mitad de la cuenta,
-se para en vez de fijar una postura que no ibas a mantener. Se puede cancelar,
-avisa si te moviste demasiado, y hay un «Deshacer» si la nueva calibración sale
-peor que la anterior.
+**Y ahora se les nota mucho más lo que sienten.** Tienen pupilas que miran
+hacia abajo cuando te encorvas y se abren de golpe con el aviso; en postura
+mala sudan, tiemblan y fruncen el ceño; y cada uno reacciona a su manera —a la
+planta se le caen las hojas, el gato baja las orejas, la tortuga esconde la
+cabeza en el caparazón y al robot se le enciende la antena.
 
-**Los ajustes están en pestañas** en vez de una sola página con scroll
-interminable, y ahora se puede tocar el doble de cosas: el sonido del aviso
-(volumen, tono, duración), la velocidad del oscurecido, los umbrales de mala
-postura, cuánto dura la calibración y cuánta CPU gasta la detección. Cada
-sección tiene su propio «Restaurar», que nunca toca tus perfiles ni tu
-calibración.
+**Al enderezarte, el personaje da un salto y sonríe.** Hasta ahora la app solo
+sabía castigar.
 
-**Un botón de buscar actualizaciones**, en el icono ⓘ de arriba a la derecha.
-Es la **única** conexión de red que llega a hacer la app, y solo si la pulsas
-tú: nunca al arrancar, nunca en segundo plano.
+**En pausa se duerme (`zZz`) y cuando pierde la cámara te busca con una `?`.**
+Antes los dos estados se veían idénticos y no había forma de saber cuál era.
 
 ## Qué descargar
 

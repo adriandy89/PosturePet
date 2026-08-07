@@ -1,4 +1,5 @@
 import { PostureCamera } from './camera.mjs';
+import { avatarSvg, isKnownAvatar, DEFAULT_AVATAR } from './avatars.mjs';
 
 /**
  * Renderer del personaje. Hace dos cosas a la vez:
@@ -53,15 +54,56 @@ function serialize(result) {
 
 // -------------------------------------------------------------- apariencia
 
-let visible = true;
+const STATES = ['good', 'warn', 'bad', 'paused', 'blind'];
 
-function setState(name) {
-  pet.className = `state-${name}`;
+let visible = true;
+let avatar = null;
+let state = 'paused';
+let reliefTimer = null;
+
+/**
+ * Las clases se tocan una a una con classList y no reescribiendo className.
+ * `nudge` y `relief` las pone y las quita un temporizador, y un cambio de
+ * estado a mitad las borraria: la sacudida del aviso se quedaria congelada.
+ */
+function applyState() {
+  for (const s of STATES) pet.classList.toggle(`state-${s}`, s === state);
 }
 
-window.bridge.onState(({ state, level, alarmed }) => {
-  if (state === 'paused') return setState('paused');
-  if (state === 'bad') return setState(alarmed || level >= 3 ? 'bad' : 'warn');
+/** Pinta el cuerpo del personaje elegido. Solo al cambiar, no en cada frame. */
+function renderAvatar(id) {
+  const next = isKnownAvatar(id) ? id : DEFAULT_AVATAR;
+  if (next === avatar) return;
+
+  if (avatar) pet.classList.remove(`avatar-${avatar}`);
+  avatar = next;
+  pet.classList.add(`avatar-${avatar}`);
+  pet.innerHTML = avatarSvg(avatar);
+  applyState();
+}
+
+function setState(next) {
+  if (next === state) return;
+
+  // Enderezarse merece respuesta. La app solo sabe castigar, y una app que
+  // solo castiga se acaba desinstalando; el rebote dura menos de un segundo y
+  // es lo unico que dice "bien hecho".
+  const corrected = (state === 'bad' || state === 'warn') && next === 'good';
+  state = next;
+  applyState();
+
+  clearTimeout(reliefTimer);
+  pet.classList.toggle('relief', corrected);
+  if (corrected) {
+    reliefTimer = setTimeout(() => pet.classList.remove('relief'), 900);
+  }
+}
+
+renderAvatar(DEFAULT_AVATAR);
+
+window.bridge.onState(({ state: next, level, alarmed }) => {
+  if (next === 'paused') return setState('paused');
+  if (next === 'bad') return setState(alarmed || level >= 3 ? 'bad' : 'warn');
   setState('good');
 });
 
@@ -157,6 +199,7 @@ window.bridge.onChime((kind) => {
 
 window.bridge.onConfig((cfg) => {
   if (cfg.sound) sound = { ...sound, ...cfg.sound };
+  if (cfg.avatar) renderAvatar(cfg.avatar);
   camera.configure(cfg);
 });
 

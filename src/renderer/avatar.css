@@ -1,0 +1,523 @@
+/**
+ * El aspecto de los personajes: paleta, piezas, expresiones y animaciones.
+ *
+ * Lo cargan DOS ventanas -- la del personaje y la de ajustes, que pinta los
+ * seis a la vez para elegir.
+ *
+ *
+ * DOS REGLAS QUE NO SE PUEDEN SALTAR
+ *
+ * 1. TODO cuelga de `.pet`. Sin excepciones, ni siquiera las reglas que
+ *    parecen inofensivas. Las clases de aqui son palabras corrientes --
+ *    `.head`, `.face`, `.panel`, `.shadow` -- y este archivo se carga entero
+ *    dentro de la ventana de ajustes. Ya paso: cada pestana de ajustes es un
+ *    `<div class="panel">`, asi que `.panel path { fill: none }`, escrito para
+ *    el pecho del robot, dejo huecos los cuerpos de los seis avatares. No
+ *    fallo nada; simplemente se veian mal.
+ *
+ * 2. Nada de ids, ni aqui ni en avatars.mjs. En la rejilla hay seis
+ *    personajes a la vez y un id repetido solo le aplicaria al primero.
+ *
+ * test/avatar-css.test.js comprueba la primera; test/avatars.test.mjs, la
+ * segunda.
+ *
+ * Todo el color pasa por --tone, asi que cambiar de estado es cambiar una
+ * variable y dejar que las transiciones hagan el resto.
+ */
+
+.pet svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* --------------------------------------------------------------- paleta */
+
+.pet {
+  --tone: #6f7782;
+  --tone-dark: #4f565f;
+  --ink: #17202a;
+  --sclera: #f4f7fa;
+  --breathe: 3.4s;
+}
+
+.pet.state-good {
+  --tone: #4caf50;
+  --tone-dark: #357a38;
+}
+
+.pet.state-warn {
+  --tone: #ffa726;
+  --tone-dark: #c77c18;
+  --breathe: 2s;
+}
+
+.pet.state-bad {
+  --tone: #ef5350;
+  --tone-dark: #b53c39;
+  --breathe: 1.2s;
+}
+
+.pet.state-paused,
+.pet.state-blind {
+  opacity: 0.45;
+}
+
+/* ---------------------------------------------------------------- piezas */
+
+.pet .torso,
+.pet .skull,
+.pet .shell,
+.pet .pot {
+  fill: var(--tone);
+  transition: fill 0.9s ease;
+}
+
+.pet .skull {
+  stroke: var(--tone-dark);
+  stroke-width: 2;
+  transition: fill 0.9s ease, stroke 0.9s ease;
+}
+
+.pet .shadow {
+  fill: #000;
+  opacity: 0.18;
+  transition: opacity 0.9s ease;
+}
+
+/* ------------------------------------------------------------------ ojos */
+
+.pet .eye {
+  fill: var(--sclera);
+}
+
+.pet .pupil {
+  fill: var(--ink);
+  /* La mirada es lo que mas vida da por menos dibujo: basta desplazarla unos
+     pixeles para que el personaje mire hacia abajo, se sobresalte o se
+     despiste. */
+  transition: transform 0.45s ease, r 0.3s ease;
+}
+
+/* El parpadeo aplasta ojo y pupila a la vez: animar solo el ojo dejaria la
+   pupila flotando sobre un parpado cerrado. */
+.pet .eye-group {
+  transition: transform 0.18s ease;
+}
+
+.pet .eye-l {
+  transform-origin: 49px 40px;
+}
+
+.pet .eye-r {
+  transform-origin: 71px 40px;
+}
+
+.pet .mouth {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition: d 0.6s ease;
+}
+
+.pet .brows path {
+  stroke: var(--ink);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+/* ------------------------------------------------- piezas de cada avatar */
+
+.pet .ear,
+.pet .tuft {
+  fill: var(--tone);
+  stroke: var(--tone-dark);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  transition: fill 0.9s ease, stroke 0.9s ease;
+}
+
+.pet .whiskers path {
+  stroke: var(--tone-dark);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.pet .nose,
+.pet .beak {
+  fill: var(--tone-dark);
+  transition: fill 0.9s ease;
+}
+
+.pet .disc circle {
+  fill: var(--sclera);
+  opacity: 0.28;
+}
+
+.pet .stem {
+  stroke: var(--tone-dark);
+  stroke-width: 5;
+  stroke-linecap: round;
+  fill: none;
+  transition: stroke 0.9s ease;
+}
+
+/* Los petalos llevan borde: sin el, del mismo color que la cabeza, la flor se
+   leia como un bulto y no como una flor. */
+.pet .petals ellipse {
+  fill: var(--tone);
+  stroke: var(--tone-dark);
+  stroke-width: 2;
+  transition: fill 0.9s ease, stroke 0.9s ease;
+}
+
+.pet .leaf {
+  fill: var(--tone-dark);
+  transition: transform 1.1s cubic-bezier(0.22, 1, 0.36, 1), fill 0.9s ease;
+}
+
+.pet .leaf-l {
+  transform-origin: 58px 82px;
+}
+
+.pet .leaf-r {
+  transform-origin: 62px 87px;
+}
+
+.pet .pot-rim {
+  fill: var(--tone-dark);
+  transition: fill 0.9s ease;
+}
+
+.pet .shell-plates path {
+  stroke: var(--tone-dark);
+  stroke-width: 2;
+  fill: none;
+  transition: stroke 0.9s ease;
+}
+
+.pet .neck {
+  fill: var(--tone-dark);
+  transition: fill 0.9s ease;
+}
+
+.pet .antenna {
+  stroke: var(--tone-dark);
+  stroke-width: 3;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.pet .bulb {
+  fill: var(--tone-dark);
+  transition: fill 0.9s ease;
+}
+
+/* El pecho del robot. Se llama `chest` y no `panel` a proposito: `panel` es
+   como se llaman las pestanas de la ventana de ajustes. */
+.pet .chest circle {
+  fill: var(--tone-dark);
+  opacity: 0.5;
+}
+
+.pet .chest path {
+  stroke: var(--tone-dark);
+  stroke-width: 2;
+  stroke-linecap: round;
+  fill: none;
+  opacity: 0.5;
+}
+
+/* ------------------------------------------------------------- animacion */
+
+.pet .creature {
+  /* El origen de la transformacion esta a la altura de la cadera: al
+     inclinarse, el muneco pivota como lo haria una persona sentada. */
+  transform-origin: 60px 118px;
+  transition: transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: breathe var(--breathe) ease-in-out infinite;
+}
+
+.pet .head {
+  transform-origin: 60px 60px;
+  transition: transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+  50% {
+    transform: translateY(-2px) scaleY(1.015);
+  }
+}
+
+/* Postura mala: la cabeza se adelanta y baja mientras el cuerpo se hunde.
+   Es literalmente el "cuello de tortuga" que acaba de detectar la camara --
+   el muneco te ensena lo que estas haciendo, no solo que algo va mal. */
+.pet.state-warn .head {
+  transform: translate(0, 5px) scale(1.04);
+}
+
+.pet.state-bad .head {
+  transform: translate(0, 11px) scale(1.1);
+}
+
+.pet.state-warn .creature {
+  transform: rotate(-1.5deg);
+}
+
+.pet.state-bad .creature {
+  transform: rotate(-3deg) translateY(3px);
+}
+
+/* Al acercarse la cabeza a la pantalla, la sombra se agranda: refuerza la
+   sensacion de que el muneco se ha venido hacia delante. */
+.pet.state-bad .shadow {
+  opacity: 0.28;
+}
+
+.pet.state-bad .brows path,
+.pet.state-warn .brows path {
+  opacity: 1;
+}
+
+/* Cuanto peor va la cosa, mas se cierra el ceno. */
+.pet.state-bad .brows path {
+  transform: translateY(2px);
+}
+
+.pet.state-bad .mouth {
+  d: path('M52 57 Q 60 51, 68 57'); /* boca hacia abajo */
+}
+
+/* La mirada cae con la postura: mirar al suelo mientras te encorvas es lo que
+   hace que el gesto se lea como desanimo y no como enfado. */
+.pet.state-warn .pupil {
+  transform: translate(0, 1.6px);
+}
+
+.pet.state-bad .pupil {
+  transform: translate(0, 2.6px);
+}
+
+/* ----------------------------------------------- tension: sudor y temblor */
+
+.pet .sweat {
+  fill: #7ec8f5;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.pet.state-bad .sweat {
+  opacity: 0.9;
+  animation: drip 2.6s ease-in infinite;
+}
+
+@keyframes drip {
+  0%, 60% { translate: 0 0; opacity: 0.9; }
+  85% { translate: 0 7px; opacity: 0; }
+  100% { translate: 0 0; opacity: 0; }
+}
+
+/* Temblor muy leve, y sobre .face y no sobre .head: la cabeza ya tiene una
+   transicion de transform para encorvarse, y una animacion sobre la misma
+   propiedad la anularia -- el muneco dejaria de agacharse. */
+.pet.state-bad .face {
+  animation: tremble 0.22s linear infinite;
+}
+
+@keyframes tremble {
+  0%, 100% { translate: 0 0; }
+  25% { translate: 0.35px 0; }
+  75% { translate: -0.35px 0; }
+}
+
+/* Sacudida breve al saltar el aviso. Se dispara anadiendo la clase desde JS
+   y se quita al terminar, para poder repetirla. */
+.pet.nudge .creature {
+  animation: breathe var(--breathe) ease-in-out infinite, shake 0.5s ease-in-out;
+}
+
+/* Ojos como platos: el sobresalto se lee antes en la pupila que en el cuerpo. */
+.pet.nudge .eye-group {
+  transform: scale(1.18);
+}
+
+.pet.nudge .pupil {
+  r: 1.6;
+}
+
+@keyframes shake {
+  0%, 100% { translate: 0 0; }
+  20% { translate: -4px 0; }
+  40% { translate: 4px 0; }
+  60% { translate: -3px 0; }
+  80% { translate: 2px 0; }
+}
+
+/* ------------------------------------------------------ alivio al corregir */
+
+/* La app solo sabe castigar; premiar la correccion es lo que hace que no se
+   acabe desinstalando. Lo pone el JS al pasar de mala a buena postura. */
+.pet.relief .creature {
+  animation: breathe var(--breathe) ease-in-out infinite, hop 0.7s ease-out;
+}
+
+.pet.relief .mouth {
+  d: path('M50 53 Q 60 62, 70 53'); /* sonrisa ancha */
+}
+
+.pet.relief .eye-group {
+  transform: scaleY(0.55); /* ojos entornados de gusto */
+}
+
+@keyframes hop {
+  0%, 100% { translate: 0 0; }
+  35% { translate: 0 -9px; }
+  65% { translate: 0 -2px; }
+}
+
+/* ------------------------------------------------------- pausa y sin vista */
+
+/* Antes los dos estados se veian igual y no habia forma de saber si estaba en
+   pausa o si simplemente habia dejado de verte. */
+
+/* Van en el color del personaje y no en --ink como el resto de la cara: estas
+   dos marcas flotan FUERA del cuerpo, y --ink es un azul casi negro pensado
+   para verse encima de el. Sobre el fondo oscuro de la ventana de ajustes
+   -- o sobre un escritorio oscuro -- eran invisibles. */
+.pet .zzz text,
+.pet .lost {
+  fill: var(--tone);
+  font: italic 700 16px "Segoe UI", system-ui, sans-serif;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.pet .zzz .z2 {
+  font-size: 11px;
+}
+
+/* Pausa: durmiendo. Ojos cerrados, boca plana y zZz que suben. */
+.pet.state-paused .eye-group {
+  transform: scaleY(0.08);
+}
+
+.pet.state-paused .mouth {
+  d: path('M53 55 L 67 55');
+}
+
+.pet.state-paused .zzz text {
+  opacity: 1;
+  animation: float 2.8s ease-in-out infinite;
+}
+
+.pet.state-paused .zzz .z2 {
+  animation-delay: 0.7s;
+}
+
+/* Sube y se desvanece, pero pasa la mayor parte del ciclo VISIBLE: con el
+   desvanecido repartido por igual, la marca estaba a media opacidad casi
+   siempre y no se leia nunca del todo. */
+@keyframes float {
+  0% { translate: 0 5px; opacity: 0; }
+  18%, 72% { opacity: 1; }
+  100% { translate: 0 -9px; opacity: 0; }
+}
+
+/* Sin camara: te ha perdido. Los ojos van de un lado a otro y aparece una
+   interrogacion -- lo contrario de dormir. */
+.pet.state-blind .pupil {
+  animation: search 2.4s ease-in-out infinite;
+}
+
+.pet.state-blind .mouth {
+  d: path('M53 55 Q 57 51, 60 55 Q 63 59, 67 55');
+}
+
+.pet.state-blind .lost {
+  opacity: 1;
+  animation: float 3.2s ease-in-out infinite;
+}
+
+@keyframes search {
+  0%, 100% { translate: -2.2px 0; }
+  50% { translate: 2.2px 0; }
+}
+
+/* Parpadeo ocasional: sin esto la cara parece congelada. */
+.pet.state-good .eye-group {
+  animation: blink 5.5s infinite;
+}
+
+@keyframes blink {
+  0%, 93%, 100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.08); }
+}
+
+/* ------------------------------------------- reacciones propias de cada uno */
+
+/* La planta se marchita: las hojas caen con la postura. Es la unica que no
+   necesita cara para contar lo que pasa. */
+.pet.avatar-plant.state-warn .leaf-l { transform: rotate(22deg); }
+.pet.avatar-plant.state-warn .leaf-r { transform: rotate(-22deg); }
+.pet.avatar-plant.state-bad .leaf-l { transform: rotate(48deg) translateY(4px); }
+.pet.avatar-plant.state-bad .leaf-r { transform: rotate(-48deg) translateY(4px); }
+
+/* Y su flor cae MENOS que las cabezas de los demas. Con el desplome estandar
+   acababa tapando maceta y hojas -- es decir, tapando justo lo que la hace
+   valer la pena. Aqui lo cuentan las hojas, no la cabeza. */
+.pet.avatar-plant.state-warn .head { transform: translate(0, 3px) scale(1.02); }
+.pet.avatar-plant.state-bad .head { transform: translate(0, 6px) scale(1.04); }
+
+/* Al robot le falla la antena y suelta un chispazo. */
+.pet .spark {
+  stroke: #ffd54f;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  opacity: 0;
+}
+
+.pet.state-bad .spark {
+  animation: zap 1.6s steps(1) infinite;
+}
+
+@keyframes zap {
+  0%, 84%, 100% { opacity: 0; }
+  88%, 94% { opacity: 1; }
+}
+
+.pet.state-bad .bulb {
+  fill: #ffd54f;
+}
+
+/* El gato baja las orejas, que es exactamente lo que hace un gato molesto. */
+.pet .ear {
+  transform-origin: 60px 24px;
+  transition: transform 1.1s cubic-bezier(0.22, 1, 0.36, 1), fill 0.9s ease;
+}
+
+.pet.state-bad .ear {
+  transform: translateY(6px) scaleY(0.72);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet .creature,
+  .pet.state-good .eye-group,
+  .pet.state-bad .face,
+  .pet.state-bad .sweat,
+  .pet.state-bad .spark,
+  .pet.state-paused .zzz text,
+  .pet.state-blind .pupil,
+  .pet.state-blind .lost {
+    animation: none;
+  }
+}

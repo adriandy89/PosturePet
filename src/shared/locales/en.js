@@ -145,11 +145,44 @@ module.exports = {
 
     tabs: {
       posture: 'Posture',
+      avatar: 'Character',
       alerts: 'Alerts',
       sensitivity: 'Sensitivity',
       times: 'Timings',
       camera: 'Camera',
       system: 'System',
+    },
+
+    avatar: {
+      title: 'Character',
+      hint:
+        'The little figure floating on your screen. They all react the same way ' +
+        '— they slouch when you slouch — so pick whichever you fancy having in ' +
+        'front of you for eight hours. It changes instantly.',
+      previewLabel: 'See how they react',
+      states: {
+        good: 'Good posture',
+        warn: 'Starting to slouch',
+        bad: 'Poor posture',
+        paused: 'Paused',
+        blind: "Can't see you",
+      },
+      names: {
+        blob: 'Blob',
+        cat: 'Cat',
+        owl: 'Owl',
+        plant: 'Plant',
+        turtle: 'Turtle',
+        robot: 'Robot',
+      },
+      notes: {
+        blob: 'The original. Simple, never distracting.',
+        cat: 'Flattens its ears when things go wrong.',
+        owl: 'Huge eyes: you really notice where it looks.',
+        plant: 'Wilts and drops its leaves. The most expressive without a word.',
+        turtle: 'Pulls its head into its shell — exactly what the app measures.',
+        robot: 'Its antenna lights up and it throws sparks.',
+      },
     },
 
     resetSection: 'Restore this section',

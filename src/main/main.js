@@ -280,6 +280,7 @@ function pushConfigToRenderers() {
     smoothingMs: cfg.smoothingMs,
     cameraId: cfg.cameraId,
     alerts: cfg.alerts,
+    avatar: cfg.avatar,
     calibrationMs: cfg.calibrationMs,
     detectionIntervalMs: cfg.detectionIntervalMs,
     staleAfterMs: cfg.staleAfterMs,

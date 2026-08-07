@@ -23,6 +23,7 @@ no hace **ninguna** conexión de red por su cuenta.
 - [Cuándo te avisa](#cuándo-te-avisa)
 - [Perfiles de calibración](#perfiles-de-calibración)
 - [Referencia de ajustes](#referencia-de-ajustes)
+- [Personajes](#personajes)
 - [Idiomas](#idiomas)
 - [Arquitectura](#arquitectura)
 - [Desarrollo](#desarrollo)
@@ -374,9 +375,58 @@ le da el aire de aviso amable en vez de alarma.
 | Ajuste | Por defecto | Qué hace |
 |---|---|---|
 | `locale` | `null` | Idioma. `null` = el del sistema. Ver [Idiomas](#idiomas) |
+| `avatar` | `blob` | Personaje en pantalla. Ver [Personajes](#personajes) |
 | `autoStart` | desactivado | Arrancar con Windows, directo a la bandeja |
 | `profiles` | 1 perfil | Lista de perfiles con su calibración |
 | `mascotPosition` | `null` | Dónde dejaste el personaje |
+
+## Personajes
+
+Seis, y se cambian en **Ajustes → Personaje**: Blob (el de siempre), Gato,
+Búho, Planta, Tortuga y Robot. Todos reaccionan igual —se encorvan cuando te
+encorvas— así que la elección es puramente de gusto. La rejilla los pinta con
+**el mismo SVG y el mismo CSS** que la ventana del personaje, y deja probar
+cada estado: eliges por cómo se ve cuando te está riñendo, no por cómo se ve
+quieto.
+
+Cada uno es solo un cuerpo SVG ([`src/renderer/avatars.mjs`](src/renderer/avatars.mjs));
+los estados, las expresiones y las animaciones viven en
+[`avatar.css`](src/renderer/avatar.css) y son las mismas para todos. Añadir un
+personaje es dibujar un torso y una cabeza, no escribir lógica.
+
+**Lo que hace que eso funcione es un contrato de coordenadas.** El CSS que los
+anima está escrito en números absolutos: la cabeza pivota sobre (60, 60), la
+cadera sobre (60, 118) y los ojos se cierran alrededor de su centro. Un avatar
+que ponga la cabeza en otro sitio se inclinaría desde el ombligo y parpadearía
+por la oreja. [`test/avatars.test.mjs`](test/avatars.test.mjs) comprueba que
+nadie se lo salte.
+
+Dos reglas que parecen quisquillosas y no lo son:
+
+- **Nada de `id`, solo clases.** La rejilla pinta los seis a la vez, y un `id`
+  repetido seis veces solo le aplica al primero: los otros cinco se quedarían
+  sin cara sin que fallase nada.
+- **Todo selector de `avatar.css` empieza por `.pet`.** Ese archivo se carga
+  entero dentro de la ventana de ajustes y sus clases son palabras corrientes.
+  Ya pasó: cada pestaña de ajustes es un `<div class="panel">`, así que
+  `.panel path { fill: none }`, escrito para el pecho del robot, dejó huecos
+  los cuerpos de los seis avatares.
+
+### Las expresiones
+
+| Estado | Qué hace |
+|---|---|
+| Buena postura | Verde, sonríe y parpadea cada pocos segundos |
+| Empezando | Ámbar, aparece el ceño, la mirada empieza a caer |
+| Postura mala | Rojo, boca hacia abajo, ceño cerrado, gota de sudor, temblor leve y la mirada al suelo |
+| **Al enderezarte** | Un salto y una sonrisa ancha durante un segundo |
+| En pausa | Ojos cerrados y `zZz` que suben: está durmiendo |
+| Sin verte | Ojos que van de un lado a otro y una `?`: te ha perdido |
+
+Los dos últimos se veían **idénticos** antes, así que no había forma de saber
+si la app estaba en pausa o si simplemente había dejado de detectarte. Y el
+salto al corregir existe porque una app que solo castiga se acaba
+desinstalando: es lo único que dice «bien hecho».
 
 ## Idiomas
 
@@ -510,7 +560,7 @@ recortaba al mínimo del rango en lugar de volver al valor de fábrica.
 
 ```bash
 npm run dev        # con la consola del renderer redirigida al terminal
-npm test           # 140 tests, ninguno necesita cámara
+npm test           # 158 tests, ninguno necesita cámara
 npm run selftest   # cadena completa contra tu webcam, con informe
 ```
 

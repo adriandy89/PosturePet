@@ -1,5 +1,6 @@
 import { METRICS, MOVEMENT_LIMIT } from './posture.mjs';
 import { CalibrationFlow, PHASE, CHECKS } from './calibration.mjs';
+import { AVATARS, DEFAULT_AVATAR, avatarSvg } from './avatars.mjs';
 import { t, setCatalog, applyDom, applyHtmlLang } from './i18n.mjs';
 
 /**
@@ -32,7 +33,7 @@ let cameraList = [];
 
 // --------------------------------------------------------------- pestanas
 
-const TABS = ['posture', 'alerts', 'sensitivity', 'times', 'camera', 'system'];
+const TABS = ['posture', 'avatar', 'alerts', 'sensitivity', 'times', 'camera', 'system'];
 
 function selectTab(name) {
   for (const id of TABS) {
@@ -630,6 +631,83 @@ $('camera').addEventListener('change', (e) => {
 
 window.api.onCameras(renderCameras);
 
+// ------------------------------------------------------------- personaje
+
+/**
+ * La rejilla de seleccion pinta los seis avatares con el MISMO SVG y el MISMO
+ * CSS que la ventana del personaje, no con imagenes aparte: una miniatura que
+ * se dibuje por su cuenta acaba, tarde o temprano, ensenando algo distinto de
+ * lo que luego aparece en pantalla.
+ */
+const PREVIEW_STATES = ['good', 'warn', 'bad', 'paused', 'blind'];
+
+let previewState = 'bad';
+const avatarCards = new Map();
+
+function buildAvatarGrid() {
+  const grid = $('avatar-grid');
+  const states = $('avatar-states');
+
+  for (const state of PREVIEW_STATES) {
+    const btn = document.createElement('button');
+    btn.className = 'state-pick';
+    btn.dataset.state = state;
+    btn.addEventListener('click', () => {
+      previewState = state;
+      renderAvatarGrid();
+    });
+    states.append(btn);
+  }
+
+  for (const { id } of AVATARS) {
+    const card = document.createElement('button');
+    card.className = 'avatar-card';
+    card.dataset.avatar = id;
+
+    const stage = document.createElement('div');
+    // La clase `pet` es la que activa todo avatar.css; la de estado la pone
+    // renderAvatarGrid segun lo que se este previsualizando.
+    stage.className = `pet avatar-${id}`;
+    stage.innerHTML = avatarSvg(id);
+
+    const name = document.createElement('strong');
+    const note = document.createElement('em');
+
+    card.append(stage, name, note);
+    card.addEventListener('click', () => selectAvatar(id));
+    grid.append(card);
+
+    avatarCards.set(id, { card, stage, name, note });
+  }
+}
+
+async function selectAvatar(id) {
+  applyConfig(await window.api.patchSettings({ avatar: id }));
+}
+
+function renderAvatarGrid() {
+  const current = config?.avatar ?? DEFAULT_AVATAR;
+
+  for (const btn of $('avatar-states').children) {
+    const state = btn.dataset.state;
+    btn.textContent = t(`settings.avatar.states.${state}`);
+    btn.classList.toggle('active', state === previewState);
+    btn.setAttribute('aria-pressed', String(state === previewState));
+  }
+
+  for (const [id, { card, stage, name, note }] of avatarCards) {
+    card.classList.toggle('active', id === current);
+    card.setAttribute('aria-pressed', String(id === current));
+    name.textContent = t(`settings.avatar.names.${id}`);
+    note.textContent = t(`settings.avatar.notes.${id}`);
+    for (const state of PREVIEW_STATES) {
+      stage.classList.toggle(`state-${state}`, state === previewState);
+    }
+  }
+}
+
+buildAvatarGrid();
+
 // ----------------------------------------------------- acerca de / version
 
 let appVersion = '';
@@ -826,6 +904,7 @@ function applyConfig(cfg) {
   $('locale').value = cfg.locale ?? '';
   for (const s of sliders) s.sync(cfg);
   renderProfiles(cfg);
+  renderAvatarGrid();
 }
 
 const activeProfileOf = () =>
@@ -865,6 +944,7 @@ function applyStrings(payload) {
   renderGlance(lastGlance);
   renderStale(staleNow);
   renderCalibration();
+  renderAvatarGrid();
   renderVersion();
   renderUpdateState();
   if (previous) setStatus(previous.key, previous.vars, previous.tone);
