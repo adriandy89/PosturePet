@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline';" />
+    <title>PosturePet overlay</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        /* Que ni el cursor ni la seleccion reaccionen sobre el velo. */
+        pointer-events: none;
+        user-select: none;
+      }
+
+      #veil {
+        position: fixed;
+        inset: 0;
+        background: #000;
+        opacity: 0;
+        /* Entrada lenta (se nota poco, no sobresalta) y salida rapida:
+           la recompensa por enderezarte debe ser inmediata. */
+        transition: opacity 1.1s ease-out;
+      }
+
+      #veil.clearing {
+        transition: opacity 0.35s ease-in;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="veil"></div>
+    <script src="./overlay.js"></script>
+  </body>
+</html>

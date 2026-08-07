@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # --ignore-scripts salta el postinstall, que descarga el modelo de
+      # MediaPipe (5,8 MB) y genera el icono. Los tests son de logica pura:
+      # no tocan la camara, el modelo ni Electron, asi que no hacen falta.
+      - name: Instalar dependencias
+        run: npm ci --ignore-scripts
+
+      - name: Tests
+        run: npm test
+
+      - name: Comprobar sintaxis de todos los modulos
+        run: |
+          find src scripts test -name '*.js' -o -name '*.mjs' \
+            | xargs -I{} node --check {}
+
+  assets:
+    name: Descarga de assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Verifica que la URL del modelo sigue viva y que el bundle de MediaPipe
+      # se copia bien: si Google mueve el modelo, esto avisa antes que un
+      # usuario con un `npm install` roto.
+      - run: npm ci
+      - name: Comprobar que los assets estan completos
+        run: |
+          test -f vendor/models/pose_landmarker_lite.task
+          test -f vendor/tasks-vision/vision_bundle.mjs
+          test -f vendor/tasks-vision/wasm/vision_wasm_internal.wasm
+          test -f build/icon.png
+          echo "Assets OK"

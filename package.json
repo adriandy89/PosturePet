@@ -1,0 +1,52 @@
+{
+  "name": "posturepet",
+  "version": "0.1.0",
+  "description": "Monitor de postura local con webcam para Windows. Detección con MediaPipe, sin nube ni telemetría.",
+  "main": "src/main/main.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "author": {
+    "name": "Adrian DY",
+    "email": "adrian.dy89@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adriandy89/PosturePet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/adriandy89/PosturePet/issues"
+  },
+  "homepage": "https://github.com/adriandy89/PosturePet#readme",
+  "keywords": [
+    "posture",
+    "ergonomics",
+    "mediapipe",
+    "pose-estimation",
+    "webcam",
+    "electron",
+    "privacy",
+    "local-first",
+    "forward-head-posture",
+    "desktop-app"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "postinstall": "node scripts/fetch-assets.mjs && node scripts/make-icon.mjs",
+    "assets": "node scripts/fetch-assets.mjs && node scripts/make-icon.mjs",
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "selftest": "electron . --selftest",
+    "test": "node --test \"test/**/*.test.*js\"",
+    "build": "electron-builder --win",
+    "build:nosign": "electron-builder --win -c.win.signAndEditExecutable=false"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.35"
+  },
+  "devDependencies": {
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8"
+  }
+}

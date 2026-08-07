@@ -1,0 +1,43 @@
+appId: com.posturepet.app
+productName: PosturePet
+copyright: Uso personal
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - src/**
+  - vendor/**
+  - package.json
+  - '!**/*.map'
+
+# Sin empaquetar en asar a proposito.
+#
+# Todo se sirve por el protocolo app://, que resuelve con net.fetch sobre una
+# URL file://. Dentro de un asar eso no funciona: la capa que hace transparente
+# el archivo asar esta en el modulo fs, no en la pila de red, asi que el WASM de
+# MediaPipe y las paginas del renderer darian 404. Se podria desempaquetar
+# vendor/ y reescribir rutas, pero para una app local no compensa la
+# complejidad: sin asar simplemente funciona.
+asar: false
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  # El acceso directo del menu Inicio NO es opcional: Windows asocia los toasts
+  # nativos al AppUserModelID a traves de el. Sin acceso directo, las
+  # notificaciones fallan en silencio.
+  createStartMenuShortcut: true
+  shortcutName: PosturePet
+  deleteAppDataOnUninstall: false

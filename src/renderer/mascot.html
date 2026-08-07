@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob: data:;"
+    />
+    <title>PosturePet</title>
+    <link rel="stylesheet" href="./mascot.css" />
+  </head>
+  <body>
+    <!-- state-good | state-warn | state-bad | state-paused | state-blind -->
+    <div id="pet" class="state-paused" title="PosturePet">
+      <svg viewBox="0 0 120 140" aria-hidden="true">
+        <ellipse id="shadow" cx="60" cy="126" rx="30" ry="6" />
+
+        <!-- El cuerpo entero se inclina hacia delante al empeorar la postura:
+             el muneco reproduce lo que estas haciendo tu. -->
+        <g id="creature">
+          <!-- tronco -->
+          <path
+            id="torso"
+            d="M60 58 C 40 58, 32 78, 34 100 C 35 116, 46 122, 60 122 C 74 122, 85 116, 86 100 C 88 78, 80 58, 60 58 Z"
+          />
+          <!-- cabeza: es la que se desplaza hacia delante y abajo -->
+          <g id="head">
+            <circle id="skull" cx="60" cy="42" r="30" />
+            <g id="face">
+              <ellipse class="eye" cx="49" cy="40" rx="4.5" ry="5.5" />
+              <ellipse class="eye" cx="71" cy="40" rx="4.5" ry="5.5" />
+              <path id="mouth" d="M52 54 Q 60 59, 68 54" />
+            </g>
+            <!-- las cejas solo aparecen en estado de alarma -->
+            <g id="brows">
+              <path d="M43 30 L 55 27" />
+              <path d="M77 30 L 65 27" />
+            </g>
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <script type="module" src="./mascot.mjs"></script>
+  </body>
+</html>

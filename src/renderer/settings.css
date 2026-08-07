@@ -1,0 +1,393 @@
+:root {
+  --bg: #14161a;
+  --panel: #1c1f25;
+  --line: #2a2f38;
+  --text: #e6e9ee;
+  --muted: #949cab;
+  --accent: #4c9aff;
+  --good: #4caf50;
+  --warn: #ffa726;
+  --bad: #ef5350;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0 0 40px;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.55 "Segoe UI", system-ui, sans-serif;
+}
+
+/* ---------------------------------------------------------------- cabecera */
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 26px 30px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+h1 {
+  margin: 0 0 2px;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+#header-text p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+#score-ring {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  flex: none;
+}
+
+#score-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+#score-ring circle {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+
+.track {
+  stroke: #2a2f38;
+}
+
+#ring {
+  stroke: var(--muted);
+  /* 2*pi*42 ~ 264. El score se dibuja acortando el trazo. */
+  stroke-dasharray: 264;
+  stroke-dashoffset: 264;
+  transition: stroke-dashoffset 0.4s ease, stroke 0.7s ease;
+}
+
+#score-value {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- botones */
+
+.row {
+  display: flex;
+  gap: 10px;
+}
+
+button {
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #232830;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  background: #2c323c;
+  border-color: #3a414d;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #08121f;
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  background: #63a9ff;
+  border-color: #63a9ff;
+}
+
+button.danger {
+  background: #5c2b2a;
+  border-color: var(--bad);
+  color: #ffd6d5;
+}
+
+button.danger:hover:not(:disabled) {
+  background: #7a3937;
+  border-color: var(--bad);
+}
+
+#profile-form input[type='text'] {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #12151a;
+  color: var(--text);
+  font: inherit;
+}
+
+#profile-form input[type='text']:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* --------------------------------------------------------------- secciones */
+
+main {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 0 30px;
+}
+
+section {
+  margin-top: 30px;
+  padding: 22px 24px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+
+h2 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hint {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ------------------------------------------------- panel de depuracion */
+
+.metric {
+  display: grid;
+  grid-template-columns: 168px 1fr 64px;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 0;
+}
+
+.metric-name {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.metric-bar {
+  height: 8px;
+  background: #23272f;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.metric-fill {
+  height: 100%;
+  width: 0;
+  background: var(--good);
+  border-radius: 4px;
+  transition: width 0.25s ease, background 0.4s ease;
+}
+
+.metric-value {
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* Metrica perdonada (p. ej. el cuello mientras miras al teclado): se atenua
+   y se raya, para que se vea que se sigue midiendo pero no cuenta. */
+.metric.muted {
+  opacity: 0.45;
+}
+
+.metric.muted .metric-name {
+  text-decoration: line-through;
+}
+
+/* ------------------------------------------------------------- perfiles */
+
+.profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  margin-bottom: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.profile:hover {
+  background: #232830;
+}
+
+.profile.active {
+  border-color: var(--accent);
+  background: #1e2937;
+}
+
+.profile input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.profile span {
+  display: flex;
+  flex-direction: column;
+}
+
+.profile em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+#profile-actions {
+  margin-top: 12px;
+}
+
+.note {
+  margin: 14px 0 0;
+  padding: 9px 12px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  border: 1px solid var(--line);
+  background: #22262e;
+}
+
+.note.ok {
+  border-color: #2f5c31;
+  color: #b7e0b9;
+}
+
+.note.warn {
+  border-color: #7a5518;
+  color: #ffd9a0;
+}
+
+/* ---------------------------------------------------------------- toggles */
+
+.toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  cursor: pointer;
+  border-top: 1px solid var(--line);
+}
+
+.toggle:first-of-type {
+  border-top: none;
+}
+
+.toggle input {
+  margin: 3px 0 0;
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex: none;
+}
+
+.toggle span {
+  display: flex;
+  flex-direction: column;
+}
+
+.toggle em {
+  font-style: normal;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* -------------------------------------------------------------- sliders */
+
+.slider {
+  display: grid;
+  grid-template-columns: 1fr 200px 74px;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.slider label {
+  font-size: 13px;
+}
+
+.slider input {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.slider output {
+  text-align: right;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.slider select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #12151a;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.slider select:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+#privacy {
+  margin: 14px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* Estados que el JS aplica al texto de estado. */
+#status.bad {
+  color: var(--bad);
+}
+
+#status.warn {
+  color: var(--warn);
+}
+
+#status.good {
+  color: var(--good);
+}

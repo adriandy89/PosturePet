@@ -1,0 +1,44 @@
+# Dependencias
+node_modules/
+
+# Salida de electron-builder (instalador, portable, win-unpacked)
+dist/
+
+# Assets descargados o generados en tiempo de instalacion.
+# `npm install` los reconstruye con scripts/fetch-assets.mjs y make-icon.mjs,
+# asi que versionarlos solo anadiria 38 MB de binarios al historial.
+vendor/
+build/icon.png
+build/icon.ico
+
+# Informes del autodiagnostico y logs sueltos
+*.log
+selftest.log
+
+# Cache de herramientas
+.cache/
+.eslintcache
+.npm/
+
+# Variables de entorno locales
+.env
+.env.*
+!.env.example
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema operativo
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
