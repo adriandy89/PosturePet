@@ -71,8 +71,11 @@ jobs:
           }
           Write-Output "Assets OK"
 
+      # --publish never no es opcional: al ver un tag, electron-builder decide
+      # por su cuenta que toca publicar en GitHub y aborta pidiendo GH_TOKEN.
+      # Aqui solo queremos que compile; de publicar se encarga el ultimo paso.
       - name: Compilar instalador y portable
-        run: npm run build
+        run: npm run build -- --publish never
 
       # Segunda red de seguridad: comprobar que vendor/ viajo dentro del paquete.
       # asar esta desactivado a proposito (ver electron-builder.yml), asi que los
