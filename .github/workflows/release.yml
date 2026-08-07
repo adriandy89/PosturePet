@@ -98,11 +98,17 @@ jobs:
 
       # La app no esta firmada, asi que el hash es lo unico que permite a quien
       # descarga comprobar que el .exe es el que salio de este workflow.
+      #
+      # El nombre se escribe con puntos en vez de espacios porque es asi como
+      # GitHub sirve los assets: "PosturePet Setup 0.1.0.exe" se descarga como
+      # "PosturePet.Setup.0.1.0.exe". Con el nombre de disco, el archivo que
+      # tiene el usuario no aparece en la lista y `sha256sum -c` falla.
       - name: Generar SHA256SUMS.txt
         shell: pwsh
         run: |
           Get-ChildItem dist/*.exe | Sort-Object Name | ForEach-Object {
-            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+            $asset = $_.Name -replace ' ', '.'
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $asset"
           } | Set-Content dist/SHA256SUMS.txt -Encoding utf8
 
       - name: Publicar release
