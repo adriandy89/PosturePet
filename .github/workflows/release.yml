@@ -1,0 +1,113 @@
+name: Release
+
+# Se dispara al empujar un tag de version. El flujo completo es:
+#
+#   npm version patch      (o editar package.json a mano)
+#   git tag -a v0.1.1 -m "PosturePet 0.1.1"
+#   git push origin main --tags
+#
+# El runner compila, verifica y publica la release. Nada depende de la maquina
+# local: ahi `npm run build` suele acabar en `build:nosign` por el problema de
+# enlaces simbolicos de winCodeSign, y eso deja el .exe con el icono y los
+# metadatos genericos de Electron. En un runner de GitHub si hay privilegio de
+# symlink, asi que el ejecutable sale con su icono, su nombre y su version.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# Sin esto, GITHUB_TOKEN es de solo lectura y no puede crear la release.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Compilar y publicar (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # A diferencia del job `test` de ci.yml, aqui NO se usa --ignore-scripts.
+      # El postinstall descarga pose_landmarker_lite.task (5,8 MB) y copia el
+      # WASM de MediaPipe a vendor/. Sin vendor/ el .exe se compila igual, pero
+      # al abrir la camara todo da 404: es justo lo que hay que empaquetar.
+      - name: Instalar dependencias
+        run: npm ci
+
+      # El nombre de los artefactos sale de package.json, no del tag. Si los dos
+      # no coinciden, la release v0.1.1 acabaria conteniendo un
+      # "PosturePet Setup 0.1.0.exe". Mejor fallar aqui que publicarlo.
+      - name: Comprobar que el tag coincide con package.json
+        shell: pwsh
+        run: |
+          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tag = '${{ github.ref_name }}' -replace '^v', ''
+          if ($tag -and $tag -ne $pkg) {
+            throw "El tag ($tag) no coincide con package.json ($pkg)"
+          }
+          Write-Output "Version $pkg"
+
+      - name: Tests
+        run: npm test
+
+      - name: Comprobar que los assets estan completos
+        shell: pwsh
+        run: |
+          $req = @(
+            'vendor/models/pose_landmarker_lite.task',
+            'vendor/tasks-vision/vision_bundle.mjs',
+            'vendor/tasks-vision/wasm/vision_wasm_internal.wasm',
+            'build/icon.png'
+          )
+          foreach ($f in $req) {
+            if (-not (Test-Path $f)) { throw "Falta $f" }
+          }
+          Write-Output "Assets OK"
+
+      - name: Compilar instalador y portable
+        run: npm run build
+
+      # Segunda red de seguridad: comprobar que vendor/ viajo dentro del paquete.
+      # asar esta desactivado a proposito (ver electron-builder.yml), asi que los
+      # archivos se pueden inspeccionar tal cual en win-unpacked.
+      - name: Comprobar el paquete
+        shell: pwsh
+        run: |
+          $app = 'dist/win-unpacked/resources/app'
+          foreach ($f in @(
+            "$app/vendor/models/pose_landmarker_lite.task",
+            "$app/vendor/tasks-vision/wasm/vision_wasm_internal.wasm",
+            "$app/src/main/main.js"
+          )) {
+            if (-not (Test-Path $f)) { throw "El paquete no incluye $f" }
+          }
+          $exe = Get-Item 'dist/win-unpacked/PosturePet.exe'
+          Write-Output "ProductName: $($exe.VersionInfo.ProductName)"
+          Write-Output "FileVersion: $($exe.VersionInfo.FileVersion)"
+          Get-ChildItem dist/*.exe | Select-Object Name, Length
+
+      # La app no esta firmada, asi que el hash es lo unico que permite a quien
+      # descarga comprobar que el .exe es el que salio de este workflow.
+      - name: Generar SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          Get-ChildItem dist/*.exe | Sort-Object Name | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content dist/SHA256SUMS.txt -Encoding utf8
+
+      - name: Publicar release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/SHA256SUMS.txt
+          body_path: .github/RELEASE_NOTES.md
+          fail_on_unmatched_files: true

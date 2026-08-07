@@ -76,6 +76,12 @@ o compílalo tú (ver [Empaquetado](#empaquetado)).
 > Windows asocia los toasts al `AppUserModelID` mediante el acceso directo del
 > menú Inicio que crea el instalador. Sin él fallan en silencio.
 
+Al abrirlo **SmartScreen avisará**: la app no está firmada (ver
+[Limitaciones](#limitaciones-conocidas)). *Más información* → *Ejecutar de todas
+formas*. Cada release incluye un `SHA256SUMS.txt` para comprobar antes la
+descarga con `Get-FileHash <archivo> -Algorithm SHA256`; los binarios los
+compila GitHub Actions desde el tag, no una máquina personal.
+
 ## Primer uso
 
 La app arranca en la bandeja y abre Ajustes la primera vez.
@@ -452,6 +458,23 @@ Produce dos artefactos de ~97 MB: `PosturePet Setup x.y.z.exe` (instalador) y
 > - **Activar Modo Desarrollador** (Configuración → Sistema → Para
 >   programadores). Un interruptor, sin permisos de administrador, y entonces
 >   `npm run build` da el `.exe` con icono propio.
+
+### Publicar una release
+
+Los binarios que se publican no salen de una máquina local, sino de un runner de
+Windows ([.github/workflows/release.yml](.github/workflows/release.yml)), que sí
+tiene privilegio de enlace simbólico y por tanto nunca cae en `build:nosign`.
+Se dispara con un tag de versión:
+
+```bash
+npm version patch                       # sube package.json y crea el tag
+git push origin main --tags
+```
+
+El workflow verifica que el tag coincide con `package.json`, corre los tests,
+compila, comprueba que `vendor/` viajó dentro del paquete, genera
+`SHA256SUMS.txt` y publica la release con las notas de
+[.github/RELEASE_NOTES.md](.github/RELEASE_NOTES.md).
 
 ## Privacidad
 
