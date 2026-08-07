@@ -14,9 +14,31 @@
   box-sizing: border-box;
 }
 
+/**
+ * `hidden` significa oculto. Siempre.
+ *
+ * El atributo funciona a traves de `[hidden] { display: none }` de la hoja del
+ * NAVEGADOR, y cualquier regla de este archivo que fije `display` la pisa --
+ * las reglas de autor ganan a las del navegador con independencia de la
+ * especificidad. Basta un `#modal { display: grid }` para que el modal
+ * aparezca nada mas arrancar y el boton de cerrar no haga nada visible: el JS
+ * pone el atributo correctamente, pero no se nota.
+ *
+ * Es el unico !important del archivo, y se lo ha ganado.
+ */
+[hidden] {
+  display: none !important;
+}
+
+/* Cabecera y pestanas fijas, solo el contenido rueda. Con una sola barra de
+   desplazamiento para toda la pagina, el score y las pestanas se perdian al
+   bajar -- y el score es justo lo que hay que mirar mientras se ajusta. */
 body {
   margin: 0;
-  padding: 0 0 40px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font: 14px/1.55 "Segoe UI", system-ui, sans-serif;
@@ -28,12 +50,9 @@ header {
   display: flex;
   align-items: center;
   gap: 22px;
-  padding: 26px 30px;
+  padding: 22px 30px;
   background: var(--panel);
-  border-bottom: 1px solid var(--line);
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  flex: none;
 }
 
 h1 {
@@ -154,16 +173,63 @@ button.danger:hover:not(:disabled) {
   border-color: var(--accent);
 }
 
+/* --------------------------------------------------------------- pestanas */
+
+#tabs {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  padding: 0 22px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  /* A 620 px de ancho minimo las seis no caben holgadas: antes que apretarlas
+     hasta lo ilegible, que se puedan desplazar. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+#tabs::-webkit-scrollbar {
+  display: none;
+}
+
+#tabs button {
+  padding: 11px 15px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+#tabs button:hover:not(:disabled) {
+  background: none;
+  color: var(--text);
+}
+
+#tabs button[aria-selected='true'] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
 /* --------------------------------------------------------------- secciones */
 
 main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 30px 40px;
+}
+
+.panel {
   max-width: 700px;
   margin: 0 auto;
-  padding: 0 30px;
 }
 
 section {
-  margin-top: 30px;
+  margin-top: 22px;
   padding: 22px 24px;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -177,6 +243,40 @@ h2 {
   letter-spacing: 0.4px;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+/* El titulo y su boton de restaurar comparten linea: asi queda claro que el
+   boton solo alcanza a esta seccion, y no al resto de la pestana. */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.section-head h2 {
+  margin: 0;
+}
+
+button.reset {
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border-color: transparent;
+}
+
+button.reset:hover:not(:disabled) {
+  color: var(--text);
+  background: #232830;
+  border-color: var(--line);
+}
+
+button.reset.done {
+  color: var(--good);
+  border-color: #2f5c31;
+  background: #1b2a1c;
 }
 
 .hint {
@@ -377,6 +477,232 @@ h2 {
   margin: 14px 0 0;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+}
+
+/* -------------------------------------------- informacion y version */
+
+/* Arriba a la derecha de la cabecera: presente pero sin competir con el score,
+   que es lo que hay que mirar. */
+#about-open {
+  margin-left: auto;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border-color: transparent;
+}
+
+#about-open:hover:not(:disabled) {
+  color: var(--text);
+  background: #232830;
+  border-color: var(--line);
+}
+
+.info-mark {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 11px;
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
+  line-height: 1;
+}
+
+#about {
+  position: fixed;
+  inset: 0;
+  z-index: 11;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(10, 12, 15, 0.88);
+  overflow-y: auto;
+}
+
+#about-box {
+  width: 100%;
+  max-width: 470px;
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+#about-box h2 {
+  margin-bottom: 2px;
+}
+
+#about-box p {
+  margin: 0 0 12px;
+}
+
+#about-box .version {
+  margin-bottom: 16px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* La promesa del proyecto. Va destacada porque es la razon por la que alguien
+   elegiria esta app y no otra. */
+#about-box .claim {
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid #2f5c31;
+  background: #1a2a1c;
+  color: #cdeacf;
+}
+
+#about-box hr {
+  margin: 18px 0;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
+#about-box a {
+  color: var(--accent);
+}
+
+#about-result:empty {
+  display: none;
+}
+
+/* ------------------------------------------------- capa de calibracion */
+
+#calib {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(10, 12, 15, 0.88);
+  overflow-y: auto;
+}
+
+#calib-box {
+  width: 100%;
+  max-width: 460px;
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+#calib-box h2 {
+  margin-bottom: 8px;
+}
+
+#calib-stage {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  margin: 16px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0c0e12;
+}
+
+#calib-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  /* Espejado: verse sin espejar desorienta, porque moverse a la derecha te
+     mueve a la izquierda en pantalla. Solo afecta a como se ve -- las metricas
+     trabajan sobre la imagen original, sin espejar. */
+  transform: scaleX(-1);
+}
+
+#calib-countdown {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#calib-countdown {
+  display: grid;
+  place-items: center;
+  font-size: 84px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  /* Sombra en vez de un velo: tapar el video justo cuando hay que colocarse
+     seria quitar la informacion que se ha venido a dar. */
+  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.85);
+}
+
+/* Al pie del video, fina. Un anillo centrado quedaba justo encima de la cara:
+   tapa lo unico que hay que mirar mientras se calibra. */
+#calib-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  pointer-events: none;
+}
+
+#calib-bar {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
+
+#calib-checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#calib-checks li {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--muted);
+  transition: color 0.2s ease;
+}
+
+#calib-checks li.ok {
+  color: var(--good);
+}
+
+/* La marca es texto y no un icono: hereda el color del estado y se lee igual
+   en un lector de pantalla. */
+#calib-checks .mark {
+  width: 14px;
+  flex: none;
+  text-align: center;
+}
+
+#calib-actions {
+  margin-top: 18px;
+}
+
+#calib .note {
+  margin-top: 14px;
+}
+
+#calib .note:empty {
+  display: none;
+}
+
+/* Foco visible en toda la ventana: las pestanas se recorren con las flechas y
+   los deslizadores con el teclado, asi que perder de vista donde esta el foco
+   deja la interfaz inutilizable sin raton. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Estados que el JS aplica al texto de estado. */

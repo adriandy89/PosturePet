@@ -4,6 +4,8 @@ const { app } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const profiles = require('./profiles.js');
+const tuning = require('./tuning.js');
+const i18n = require('../shared/i18n.js');
 
 /**
  * Config persistida en userData/settings.json.
@@ -11,59 +13,12 @@ const profiles = require('./profiles.js');
  * Escritura atomica (temporal + rename): un corte de luz a media escritura
  * dejaria un JSON truncado, y con el se perderia la calibracion -- que es lo
  * unico aqui que cuesta trabajo rehacer.
+ *
+ * Los valores de fabrica, sus rangos y los grupos de restauracion viven en
+ * tuning.js: ahi no hace falta Electron y por tanto se pueden testear.
  */
 
-const DEFAULTS = Object.freeze({
-  // Cada superficie de aviso se apaga por separado.
-  alerts: {
-    tray: true,
-    mascot: true,
-    dim: true,
-    toast: true,
-    sound: true,
-  },
-
-  // 1.0 = umbrales de fabrica. Mas alto = salta antes.
-  sensitivity: 1.0,
-
-  // Histeresis: entra en malo por debajo de 60, no sale hasta 70.
-  enterBadBelow: 60,
-  exitBadAbove: 70,
-
-  // Temporizadores de la politica.
-  mascotDelayMs: 3_000, // el personaje se inquieta pronto
-  dwellMs: 10_000, // pero oscurecer/toast esperan a que sea sostenido
-  nagCooldownMs: 150_000, // minimo entre interrupciones (2,5 min)
-  awayAfterMs: 5_000, // sin deteccion -> auto-pausa
-
-  // Cuanto se perdona mirar hacia abajo (al teclado, a un papel) antes de que
-  // vuelva a contar como mala postura. 0 desactiva la gracia.
-  glanceGraceMs: 25_000,
-
-  // Constante de tiempo del suavizado. Mas alto = score mas estable y lento.
-  smoothingMs: 1_000,
-
-  dimOpacity: 0.35,
-
-  /**
-   * Perfiles de calibracion.
-   *
-   * La base no es "tu postura correcta" en abstracto: es tu postura correcta
-   * VISTA DESDE ESA CAMARA, en ESA silla, a ESA altura. Cambia de sitio y la
-   * base entera deja de valer. Por eso cada montaje lleva la suya, y cambiar
-   * de perfil es un clic en la bandeja en vez de recalibrar cada vez.
-   *
-   * Tambien sirve si mas de una persona usa el mismo equipo: las proporciones
-   * corporales de cada uno dan bases distintas.
-   */
-  profiles: [{ id: 'default', name: 'Escritorio', baseline: null, createdAt: 0 }],
-  activeProfileId: 'default',
-
-  // Se rellenan al arrastrar el personaje y al elegir camara.
-  mascotPosition: null,
-  cameraId: null,
-  autoStart: false,
-});
+const { DEFAULTS, LIMITS, RESET_GROUPS } = tuning;
 
 let cache = null;
 let filePath = null;
@@ -81,10 +36,27 @@ function merge(stored) {
     alerts: { ...DEFAULTS.alerts, ...(stored?.alerts ?? {}) },
     // normalize() se encarga de la migracion desde el campo `baseline` suelto
     // y de garantizar que la lista nunca queda vacia ni el activo colgando.
-    ...profiles.normalize(stored),
+    ...profiles.normalize(stored, i18n.t('profiles.defaultName')),
   };
   delete next.baseline;
-  return next;
+  return tuning.sanitize(next);
+}
+
+/**
+ * Solo el idioma elegido, leido del disco sin pasar por merge().
+ *
+ * Existe por un problema de orden: merge() bautiza el perfil por defecto con
+ * un nombre traducido, asi que hay que fijar el idioma ANTES de la primera
+ * lectura completa -- pero el idioma vive dentro del propio archivo. Esta
+ * lectura minima rompe el circulo, y en un arranque limpio en ingles el perfil
+ * nace llamandose "Desk" en vez de "Escritorio".
+ */
+function storedLocale() {
+  try {
+    return i18n.normalizeCode(JSON.parse(fs.readFileSync(file(), 'utf8'))?.locale);
+  } catch {
+    return null; // sin archivo todavia, o ilegible: manda el idioma del sistema
+  }
 }
 
 function load() {
@@ -95,7 +67,7 @@ function load() {
     if (err.code !== 'ENOENT') {
       console.warn('settings.json ilegible, se usan los valores por defecto:', err.message);
     }
-    cache = { ...DEFAULTS, alerts: { ...DEFAULTS.alerts } };
+    cache = merge({});
   }
   return cache;
 }
@@ -114,6 +86,19 @@ function save(patch) {
     console.error('No se pudo guardar la configuracion:', err.message);
   }
   return next;
+}
+
+/**
+ * Devuelve a fabrica un grupo de ajustes, o todos si no se nombra ninguno.
+ *
+ * Deja siempre fuera perfiles, calibracion, camara elegida, posicion del
+ * personaje e idioma: eso no son "valores por defecto" que uno quiera
+ * recuperar, es trabajo del usuario. Recalibrar por haber tocado un deslizador
+ * seria un castigo desproporcionado.
+ */
+function resetTunables(group) {
+  const patch = tuning.resetPatch(group);
+  return patch ? save(patch) : load();
 }
 
 /** Solo lo que necesita PosturePolicy. */
@@ -136,15 +121,22 @@ const activeProfile = () => profiles.find(load());
 const activeBaseline = () => profiles.baselineOf(load());
 
 const saveBaseline = (baseline) => save(profiles.withBaseline(load(), baseline, Date.now()));
-const addProfile = (name) => save(profiles.add(load(), name, crypto.randomUUID(), Date.now()));
+const addProfile = (name) =>
+  save(profiles.add(load(), name, crypto.randomUUID(), Date.now(), (n) =>
+    i18n.t('profiles.autoName', { n })
+  ));
 const renameProfile = (id, name) => save(profiles.rename(load(), id, name));
 const deleteProfile = (id) => save(profiles.remove(load(), id));
 const setActiveProfile = (id) => save(profiles.activate(load(), id));
 
 module.exports = {
   DEFAULTS,
+  LIMITS,
+  RESET_GROUPS,
+  storedLocale,
   load,
   save,
+  resetTunables,
   policyConfig,
   activeProfile,
   activeBaseline,

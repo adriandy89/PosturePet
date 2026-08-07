@@ -4,12 +4,14 @@ const { app, BrowserWindow, ipcMain, session, screen, shell } = require('electro
 const path = require('node:path');
 
 const settings = require('./settings.js');
+const i18n = require('../shared/i18n.js');
 const appProtocol = require('./protocol.js');
 const { PosturePolicy, STATE } = require('./policy.js');
 const { TrayController } = require('./tray.js');
 const { DimOverlay } = require('./overlay.js');
 const { Notifier } = require('./notifier.js');
 const { SelfTest } = require('./selftest.js');
+const updates = require('./updates.js');
 
 /**
  * Orquestador. El reparto de responsabilidades:
@@ -62,6 +64,19 @@ let lastFrame = null;
 let selfTest = null;
 let cameras = [];
 
+/**
+ * La base anterior a la ultima recalibracion, para poder deshacerla.
+ *
+ * En memoria y no en disco a proposito: es una red de seguridad para el minuto
+ * siguiente ("me he movido al calibrar, esta peor que antes"), no un historial.
+ * Persistirla obligaria a decidir cuantas guardar y a ensuciar settings.json
+ * con datos que nadie va a mirar dos sesiones despues.
+ */
+let previousBaseline = null;
+
+/** Cancela la calibracion en curso, si la hay. La instala el handler. */
+let cancelPendingCalibration = null;
+
 // ---------------------------------------------------------------- ventanas
 
 function createMascotWindow() {
@@ -103,6 +118,11 @@ function createMascotWindow() {
       selfTest = new SelfTest({
         startCalibration: () => mascotWindow.webContents.send('mascot:calibrate'),
         quit: (code) => { process.exitCode = code; app.quit(); },
+        // El diagnostico enciende el relay directamente: no hay ventana de
+        // ajustes abierta, asi que setPreview() lo apagaria por no haber quien
+        // mire, y justamente es lo que se quiere comprobar.
+        setPreview: (on) => mascotWindow?.webContents.send('mascot:preview', on),
+        calibrationMs: cfg.calibrationMs,
       });
       // Margen para que MediaPipe compile el WASM y la camara arranque.
       setTimeout(() => selfTest.start(), 3_000);
@@ -172,7 +192,7 @@ function openSettingsWindow() {
     height: 820,
     minWidth: 620,
     minHeight: 620,
-    title: 'PosturePet',
+    title: i18n.t('app.name'),
     backgroundColor: '#14161a',
     show: false,
     webPreferences: {
@@ -185,7 +205,13 @@ function openSettingsWindow() {
   settingsWindow.removeMenu();
   settingsWindow.loadURL(appProtocol.url('src/renderer/settings.html'));
   settingsWindow.once('ready-to-show', () => settingsWindow.show());
-  settingsWindow.on('closed', () => { settingsWindow = null; });
+  settingsWindow.on('closed', () => {
+    settingsWindow = null;
+    // Cerrar la ventana con la capa abierta es cancelar: si no, la captura
+    // seguiria y guardaria una base que el usuario nunca llego a aceptar.
+    cancelPendingCalibration?.();
+    setPreview(false);
+  });
 
   // Los enlaces externos van al navegador, nunca dentro de la app.
   settingsWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -243,6 +269,7 @@ function pushConfigToRenderers() {
 
   policy?.reconfigure(settings.policyConfig());
   overlay?.setOpacity(cfg.dimOpacity);
+  overlay?.setFades({ inMs: cfg.dimFadeInMs, outMs: cfg.dimFadeOutMs });
   notifier?.setEnabled({ toast: cfg.alerts.toast, sound: cfg.alerts.sound });
   tray?.setEnabled(cfg.alerts.tray);
 
@@ -253,11 +280,62 @@ function pushConfigToRenderers() {
     smoothingMs: cfg.smoothingMs,
     cameraId: cfg.cameraId,
     alerts: cfg.alerts,
+    calibrationMs: cfg.calibrationMs,
+    detectionIntervalMs: cfg.detectionIntervalMs,
+    staleAfterMs: cfg.staleAfterMs,
+    previewIntervalMs: cfg.previewIntervalMs,
+    sound: {
+      volume: cfg.soundVolume,
+      pitchHz: cfg.soundPitchHz,
+      gapMs: cfg.soundGapMs,
+      decayMs: cfg.soundDecayMs,
+    },
   };
   mascotWindow?.webContents.send('config:update', forRenderer);
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('config:update', cfg);
   }
+}
+
+/**
+ * Cambia el idioma en caliente. Nada se reinicia: el menu de la bandeja se
+ * reconstruye, los textos ya emitidos (un toast en pantalla) se quedan como
+ * estaban -- que es lo correcto -- y la ventana de ajustes recibe el catalogo
+ * nuevo y se repinta sola.
+ */
+function applyLocale() {
+  const cfg = settings.load();
+  i18n.setLocale(i18n.resolve(cfg.locale, app.getLocale()));
+  tray?.relocalize();
+  broadcastStrings();
+}
+
+/** El paquete de idioma que consume la ventana de ajustes. */
+function stringsPayload() {
+  return {
+    locale: i18n.locale(),
+    catalog: i18n.catalogFor(),
+    available: i18n.available(),
+  };
+}
+
+function broadcastStrings() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('i18n:update', stringsPayload());
+  }
+}
+
+/**
+ * Enciende o apaga el envio de fotogramas de la camara a la ventana de ajustes.
+ *
+ * Se apaga solo en cuanto deja de haber quien mire: cerrar la ventana de
+ * ajustes con la capa de calibracion abierta dejaria a la ventana del personaje
+ * codificando un JPEG cada 100 ms para nadie, y eso no se nota hasta que el
+ * portatil empieza a soplar.
+ */
+function setPreview(on) {
+  const wanted = on && settingsWindow && !settingsWindow.isDestroyed();
+  mascotWindow?.webContents.send('mascot:preview', Boolean(wanted));
 }
 
 function setPaused(paused) {
@@ -294,16 +372,50 @@ function registerIpc() {
   });
 
   ipcMain.handle('settings:get', () => settings.load());
+  ipcMain.handle('settings:limits', () => settings.LIMITS);
+  ipcMain.handle('i18n:get', () => stringsPayload());
+
+  // La version sale de aqui y no de leer package.json en el renderer: en el
+  // .exe empaquetado ese archivo esta en otro sitio, y app.getVersion() es lo
+  // unico que dice la verdad en los dos casos.
+  ipcMain.handle('app:version', () => app.getVersion());
+
+  // Unica conexion de red de toda la app, y solo si el usuario la pide.
+  ipcMain.handle('updates:check', () => updates.check());
+  ipcMain.handle('updates:open', (_e, url) => updates.openReleases(url));
 
   ipcMain.handle('settings:patch', (_e, patch) => {
-    const before = settings.load().alerts.mascot;
+    const before = settings.load();
     const next = settings.save(patch);
 
-    if (next.alerts.mascot !== before) applyMascotVisibility(next.alerts.mascot);
+    if (next.alerts.mascot !== before.alerts.mascot) applyMascotVisibility(next.alerts.mascot);
     if (!next.alerts.dim) overlay.hide();
+    // El idioma se compara contra lo guardado, no contra lo que trae el patch:
+    // sanitize() puede haber rechazado un codigo que no existe.
+    if (next.locale !== before.locale) applyLocale();
     pushConfigToRenderers();
     return next;
   });
+
+  // Restaurar no toca perfiles, calibracion ni idioma (ver settings.js).
+  // Sin grupo restaura todo; con grupo, solo esa seccion de la ventana.
+  ipcMain.handle('settings:reset', (_e, group) => {
+    const before = settings.load();
+    const next = settings.resetTunables(group);
+
+    // Solo si de verdad ha cambiado: applyMascotVisibility recoloca la
+    // ventana, y restaurar la seccion de Sonido no tiene por que mover al
+    // personaje de sitio.
+    if (next.alerts.mascot !== before.alerts.mascot) applyMascotVisibility(next.alerts.mascot);
+    if (!next.alerts.dim) overlay.hide();
+    pushConfigToRenderers();
+    tray?.refreshMenu();
+    return next;
+  });
+
+  // Suena al margen del enfriamiento y del interruptor: lo usan el boton
+  // "Probar sonido" y los tics de la cuenta atras de la calibracion.
+  ipcMain.on('sound:play', (_e, kind) => notifier?.chime(kind));
 
   ipcMain.handle('settings:set-autostart', (_e, enabled) => {
     app.setLoginItemSettings({ openAtLogin: enabled, args: ['--autostart'] });
@@ -314,27 +426,76 @@ function registerIpc() {
   // solo se lanza y se guarda el resultado.
   ipcMain.handle('calibrate', async () => {
     if (!mascotWindow || mascotWindow.isDestroyed()) {
-      return { ok: false, error: 'La ventana de captura no esta lista.' };
+      return { ok: false, errorKey: 'errors.windowNotReady' };
     }
+    // El margen sobre la duracion de la calibracion cubre el arranque del
+    // detector. Sin sumarla, alargar la calibracion en ajustes haria que el
+    // tiempo se agotase antes de que llegase a terminar.
+    const timeoutMs = settings.load().calibrationMs + 12_000;
     return new Promise((resolve) => {
-      const done = (_e, result) => {
+      const settle = (result) => {
         clearTimeout(timer);
         ipcMain.removeListener('calibration:done', done);
+        cancelPendingCalibration = null;
+        resolve(result);
+      };
+
+      const done = (_e, result) => {
         if (result.ok) {
+          // Se guarda la anterior ANTES de pisarla: despues ya no hay de donde
+          // sacarla, y es justo cuando el usuario descubre que la nueva es peor.
+          previousBaseline = settings.activeBaseline();
           settings.saveBaseline(result.baseline);
           pushConfigToRenderers();
           tray?.refreshMenu();
         }
-        resolve(result);
+        settle(result);
       };
-      const timer = setTimeout(() => {
-        ipcMain.removeListener('calibration:done', done);
-        resolve({ ok: false, error: 'Se agoto el tiempo. Revisa que la camara te vea.' });
-      }, 15_000);
+
+      const timer = setTimeout(
+        () => settle({ ok: false, errorKey: 'errors.calibrationTimeout' }),
+        timeoutMs
+      );
+
+      // Cancelar tiene que llegar hasta el detector: cerrar la capa sin avisarle
+      // dejaria la captura corriendo, y al terminar guardaria la base igual.
+      cancelPendingCalibration = () => {
+        mascotWindow?.webContents.send('mascot:calibrate-cancel');
+        settle({ ok: false, cancelled: true });
+      };
 
       ipcMain.on('calibration:done', done);
       mascotWindow.webContents.send('mascot:calibrate');
     });
+  });
+
+  ipcMain.handle('calibrate:cancel', () => {
+    cancelPendingCalibration?.();
+    return true;
+  });
+
+  // Deshacer solo tiene sentido mientras haya algo a lo que volver, y una sola
+  // vez: la base "anterior" despues de deshacer seria la que se acaba de tirar.
+  ipcMain.handle('calibrate:undo', () => {
+    if (!previousBaseline) return { ok: false };
+    settings.saveBaseline(previousBaseline);
+    previousBaseline = null;
+    pushConfigToRenderers();
+    tray?.refreshMenu();
+    return { ok: true, config: settings.load() };
+  });
+
+  ipcMain.handle('calibrate:can-undo', () => Boolean(previousBaseline));
+
+  ipcMain.on('preview:enable', (_e, on) => setPreview(on));
+  ipcMain.on('preview:frame', (_e, dataUrl) => {
+    selfTest?.observePreview(dataUrl);
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.webContents.send('preview:update', dataUrl);
+    } else if (!selfTest) {
+      // Nadie mirando: se apaga en el origen en vez de seguir recibiendo.
+      setPreview(false);
+    }
   });
 
   ipcMain.handle('pause:toggle', () => {
@@ -387,6 +548,12 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     appProtocol.handleScheme();
 
+    // Lo PRIMERO, antes de la primera lectura completa de ajustes: merge()
+    // bautiza el perfil por defecto con un nombre traducido, asi que en un
+    // arranque limpio el idioma tiene que estar ya decidido. Se lee suelto del
+    // disco porque el propio ajuste vive dentro del archivo.
+    i18n.setLocale(i18n.resolve(settings.storedLocale(), app.getLocale()));
+
     // La camara se concede solo a nuestras propias paginas; cualquier otra
     // peticion se deniega.
     const isOurs = (wc) => appProtocol.isAppUrl(wc?.getURL());
@@ -401,6 +568,10 @@ if (!app.requestSingleInstanceLock()) {
     overlay = new DimOverlay();
     overlay.create();
     overlay.setOpacity(settings.load().dimOpacity);
+    overlay.setFades({
+      inMs: settings.load().dimFadeInMs,
+      outMs: settings.load().dimFadeOutMs,
+    });
 
     notifier = new Notifier();
 

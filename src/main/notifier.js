@@ -1,6 +1,7 @@
 'use strict';
 
 const { Notification } = require('electron');
+const { t, list } = require('../shared/i18n.js');
 
 /**
  * Las dos superficies que interrumpen: toast nativo y sonido.
@@ -11,32 +12,12 @@ const { Notification } = require('electron');
  * El toast nombra la metrica que peor esta. "Sientate bien" es facil de
  * ignorar; "te has acercado a la pantalla" te dice que corregir, y eso es la
  * diferencia entre un aviso util y ruido.
+ *
+ * Los textos viven en los catalogos de idioma, bajo `notify.metric.<clave>`.
+ * La clave de cada entrada es exactamente el nombre de la metrica en
+ * posture.mjs, y test/messages.test.mjs comprueba que no falte ninguna: una
+ * metrica sin mensaje cae al texto generico sin que nadie se entere.
  */
-
-const POR_METRICA = {
-  neckLength: [
-    'Cuello encogido: baja los hombros y sube la barbilla.',
-    'Se te esta acortando el cuello. Abre el pecho y lleva los hombros atras.',
-    'La cabeza se te hunde entre los hombros.',
-  ],
-  proximity: [
-    'Te has acercado a la pantalla. Echate un poco atras.',
-    'La cabeza se te ha ido hacia el monitor.',
-  ],
-  // Esta metrica va en dos sentidos, asi que el mensaje depende del signo.
-  shoulderHeight: {
-    up: ['Te has escurrido en la silla. Sube el culo al respaldo.', 'Vas resbalando hacia abajo.'],
-    down: ['Llevas los hombros encogidos. Sueltalos.', 'Relaja los hombros, los tienes subidos.'],
-  },
-  shoulderTilt: [
-    'Estas ladeado. Reparte el peso entre las dos caderas.',
-    'Un hombro mas alto que el otro.',
-  ],
-  headRoll: ['Tienes la cabeza torcida.', 'Endereza la cabeza.'],
-  driftX: ['Te has desplazado de lado. Vuelve al centro.', 'Recolocate frente a la pantalla.'],
-};
-
-const GENERICO = ['Revisa tu postura.', 'Estirate un momento.'];
 
 class Notifier {
   #counter = 0;
@@ -54,7 +35,7 @@ class Notifier {
   /** @param breakdown el desglose por metrica de posture.mjs, o null */
   nag(breakdown) {
     if (this.#enabled.toast) this.#toast(breakdown);
-    if (this.#enabled.sound) this.#chime();
+    if (this.#enabled.sound) this.chime();
   }
 
   #toast(breakdown) {
@@ -66,15 +47,16 @@ class Notifier {
     const body = mensajes[this.#counter++ % mensajes.length];
 
     new Notification({
-      title: 'PosturePet',
+      title: t('notify.title'),
       body,
-      silent: true, // el sonido lo pone #chime, y tiene su propio interruptor
+      silent: true, // el sonido lo pone chime(), y tiene su propio interruptor
       urgency: 'low',
     }).show();
   }
 
   #mensajesPara(breakdown) {
-    if (!breakdown) return GENERICO;
+    const generico = list('notify.generic');
+    if (!breakdown) return generico;
 
     // La metrica con mas contribucion a la penalizacion es la que hay que
     // corregir; las demas suelen ir detras de ella.
@@ -86,24 +68,33 @@ class Notifier {
         peor = name;
       }
     }
-    if (!peor) return GENERICO;
-
-    const entry = POR_METRICA[peor];
-    if (!entry) return GENERICO;
+    if (!peor) return generico;
 
     // Las metricas de dos sentidos necesitan mensajes distintos segun el signo:
     // "te escurres" y "encoges los hombros" son la misma metrica y consejos
-    // opuestos.
-    if (Array.isArray(entry)) return entry;
-    return breakdown[peor].deviation >= 0 ? entry.up : entry.down;
+    // opuestos. En el catalogo eso es un objeto {up, down} en vez de una lista.
+    const directo = list(`notify.metric.${peor}`);
+    if (directo.length) return directo;
+
+    const sentido = breakdown[peor].deviation >= 0 ? 'up' : 'down';
+    const porSigno = list(`notify.metric.${peor}.${sentido}`);
+    return porSigno.length ? porSigno : generico;
   }
 
-  #chime() {
-    // El proceso main no reproduce audio: se lo pedimos al renderer del
-    // personaje, que sintetiza el tono con Web Audio. Suena aunque la ventana
-    // este reducida a 1x1 con el personaje desactivado.
+  /**
+   * El proceso main no reproduce audio: se lo pedimos al renderer del
+   * personaje, que sintetiza el tono con Web Audio. Suena aunque la ventana
+   * este reducida a 1x1 con el personaje desactivado.
+   *
+   * Es publico porque lo invocan al margen del enfriamiento y de los
+   * interruptores el boton "Probar sonido" y los tics de la cuenta atras de la
+   * calibracion: quien los provoca quiere oirlos ahora.
+   *
+   * @param kind 'nag' (aviso de dos notas), 'tick' o 'go' -- ver mascot.mjs
+   */
+  chime(kind = 'nag') {
     const win = this.#mascotWindow;
-    if (win && !win.isDestroyed()) win.webContents.send('mascot:chime');
+    if (win && !win.isDestroyed()) win.webContents.send('mascot:chime', kind);
   }
 }
 

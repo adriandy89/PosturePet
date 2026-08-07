@@ -24,6 +24,8 @@ class DimOverlay {
   #windows = [];
   #visible = false;
   #opacity = 0.35;
+  #fadeInMs = 1_100;
+  #fadeOutMs = 350;
 
   create() {
     this.destroy();
@@ -58,6 +60,7 @@ class DimOverlay {
       win.setIgnoreMouseEvents(true, { forward: true });
       win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
       win.loadURL(appProtocol.url('src/renderer/overlay.html'));
+      this.#sendFades(win);
       return win;
     });
 
@@ -79,6 +82,19 @@ class DimOverlay {
     if (this.#visible) this.show();
   }
 
+  /** Duracion de los dos fundidos. Se aplica como variables CSS en la pagina. */
+  setFades({ inMs, outMs }) {
+    if (Number.isFinite(inMs)) this.#fadeInMs = inMs;
+    if (Number.isFinite(outMs)) this.#fadeOutMs = outMs;
+    for (const win of this.#windows) {
+      if (!win.isDestroyed()) this.#sendFades(win);
+    }
+  }
+
+  #sendFades(win) {
+    this.#deliver(win, 'dim:fade', { inMs: this.#fadeInMs, outMs: this.#fadeOutMs });
+  }
+
   show() {
     this.#visible = true;
     for (const win of this.#windows) {
@@ -92,23 +108,31 @@ class DimOverlay {
   hide() {
     if (!this.#visible) return;
     this.#visible = false;
+    // Se oculta de verdad al terminar el fundido, no antes. El margen extra
+    // absorbe el desfase entre el reloj de CSS y el del proceso principal:
+    // ocultar un frame antes de tiempo produce un corte visible.
+    const after = this.#fadeOutMs + 100;
     for (const win of this.#windows) {
       if (win.isDestroyed()) continue;
       this.#send(win, 0);
-      // Se oculta de verdad al terminar el fundido, no antes.
       setTimeout(() => {
         if (!win.isDestroyed() && !this.#visible) win.hide();
-      }, 450);
+      }, after);
     }
   }
 
   #send(win, opacity) {
+    this.#deliver(win, 'dim:set', opacity);
+  }
+
+  /** Espera a que la pagina cargue: un send() a medias se pierde sin avisar. */
+  #deliver(win, channel, payload) {
     if (win.webContents.isLoading()) {
       win.webContents.once('did-finish-load', () => {
-        if (!win.isDestroyed()) win.webContents.send('dim:set', opacity);
+        if (!win.isDestroyed()) win.webContents.send(channel, payload);
       });
     } else {
-      win.webContents.send('dim:set', opacity);
+      win.webContents.send(channel, payload);
     }
   }
 

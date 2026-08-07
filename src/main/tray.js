@@ -2,6 +2,7 @@
 
 const { Tray, Menu, nativeImage } = require('electron');
 const { STATE } = require('./policy.js');
+const { t } = require('../shared/i18n.js');
 
 /**
  * Icono de bandeja que cambia de color con el estado.
@@ -64,12 +65,13 @@ class TrayController {
   #current = null;
   #handlers;
   #enabled = true;
+  #lastTip = null;
 
   /** @param handlers { onCalibrate, onSettings, onTogglePause, onQuit, isPaused } */
   constructor(handlers) {
     this.#handlers = handlers;
     this.#tray = new Tray(icons().paused);
-    this.#tray.setToolTip('PosturePet');
+    this.#tray.setToolTip(t('app.name'));
     this.#tray.on('click', () => handlers.onSettings());
     this.#rebuildMenu();
   }
@@ -82,7 +84,7 @@ class TrayController {
     // Si obligase a abrir ajustes, la gente acabaria usando una base que ya no
     // corresponde a donde esta sentada, que es peor que no tener ninguna.
     const profileItems = profiles.map((p) => ({
-      label: p.baseline ? p.name : `${p.name} (sin calibrar)`,
+      label: p.baseline ? p.name : t('tray.uncalibrated', { name: p.name }),
       type: 'radio',
       checked: p.id === activeId,
       click: () => this.#handlers.onSelectProfile(p.id),
@@ -90,20 +92,31 @@ class TrayController {
 
     this.#tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: paused ? 'Reanudar vigilancia' : 'Pausar vigilancia',
+        { label: paused ? t('tray.resume') : t('tray.pause'),
           click: () => { this.#handlers.onTogglePause(); this.#rebuildMenu(); } },
         { type: 'separator' },
-        { label: 'Perfil', submenu: profileItems },
-        { label: 'Calibrar este perfil...', click: () => this.#handlers.onCalibrate() },
+        { label: t('tray.profile'), submenu: profileItems },
+        { label: t('tray.calibrate'), click: () => this.#handlers.onCalibrate() },
         { type: 'separator' },
-        { label: 'Ajustes', click: () => this.#handlers.onSettings() },
-        { label: 'Salir', click: () => this.#handlers.onQuit() },
+        { label: t('tray.settings'), click: () => this.#handlers.onSettings() },
+        { label: t('tray.quit'), click: () => this.#handlers.onQuit() },
       ])
     );
   }
 
   refreshMenu() {
     this.#rebuildMenu();
+  }
+
+  /**
+   * Al cambiar de idioma hay que rehacer menu y tooltip. El tooltip no se
+   * puede dejar para el siguiente frame: con la app en pausa no llega ninguno,
+   * y el texto se quedaria en el idioma anterior hasta reanudar.
+   */
+  relocalize() {
+    this.#rebuildMenu();
+    this.#lastTip = null;
+    this.#tray?.setToolTip(t('app.name'));
   }
 
   /** El icono de bandeja se puede apagar como cualquier otra superficie. */
@@ -126,11 +139,18 @@ class TrayController {
       this.#current = key;
     }
 
-    let tip = 'PosturePet';
-    if (manuallyPaused) tip += ' - en pausa';
-    else if (state === STATE.PAUSED) tip += ' - nadie delante';
-    else if (score !== null && score !== undefined) tip += ` - postura ${score}/100`;
-    this.#tray.setToolTip(tip);
+    let tip;
+    if (manuallyPaused) tip = t('tray.tipPaused');
+    else if (state === STATE.PAUSED) tip = t('tray.tipAway');
+    else if (score !== null && score !== undefined) tip = t('tray.tipScore', { score });
+    else tip = t('app.name');
+
+    // setToolTip en cada frame (4 Hz) provoca parpadeos del globo del sistema
+    // en Windows cuando el raton esta encima del icono.
+    if (tip !== this.#lastTip) {
+      this.#tray.setToolTip(tip);
+      this.#lastTip = tip;
+    }
   }
 
   destroy() {

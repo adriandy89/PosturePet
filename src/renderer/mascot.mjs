@@ -19,6 +19,7 @@ const camera = new PostureCamera(
 );
 
 camera.onCalibrationDone = (result) => window.bridge.sendCalibration(result);
+camera.onPreview = (dataUrl) => window.bridge.sendPreview(dataUrl);
 
 /**
  * Los objetos que cruzan IPC se serializan con el algoritmo de clonado
@@ -34,6 +35,9 @@ function serialize(result) {
     calibrating: Boolean(result.calibrating),
     turned: Boolean(result.turned),
     stale: Boolean(result.stale),
+    // Booleanos de "estas listo para calibrar". Siguen la misma regla que el
+    // resto: numeros y banderas, nada de landmarks.
+    ready: result.ready ?? null,
     // El panel de depuracion muestra si estas mirando al teclado y si aun se
     // te esta perdonando: sin verlo, la gracia parece un fallo del detector.
     glance: result.glance
@@ -72,36 +76,78 @@ window.bridge.onVisible((v) => {
 
 /**
  * El tono se sintetiza en vez de cargar un .wav: asi no hay binarios en el
- * repo y se puede dar una envolvente suave. Dos notas descendentes con caida
- * exponencial -- se oye, pero no sobresalta como una alarma.
+ * repo, se puede dar una envolvente suave y ademas se vuelve configurable sin
+ * generar audio nuevo. Dos notas descendentes con caida exponencial -- se oye,
+ * pero no sobresalta como una alarma.
  */
 let audio = null;
 
-function chime() {
+/**
+ * Intervalo entre las dos notas: una cuarta justa descendente (3/4 de la
+ * frecuencia). Es la relacion, no las dos frecuencias sueltas, lo que da el
+ * caracter de "aviso amable"; por eso el usuario ajusta solo la primera nota
+ * y la segunda la sigue.
+ */
+const SECOND_NOTE_RATIO = 0.75;
+const ATTACK_S = 0.02;
+const SILENCE = 0.0001; // exponentialRamp no admite llegar a cero
+
+let sound = { volume: 0.12, pitchHz: 880, gapMs: 140, decayMs: 450 };
+
+/**
+ * Las tres voces. El tic de la cuenta atras NO puede ser el aviso completo:
+ * encadenar tres avisos de dos notas en tres segundos suena a alarma, justo lo
+ * contrario de lo que hace falta mientras alguien intenta sentarse bien.
+ *
+ * Todas se derivan de los ajustes del usuario en vez de llevar frecuencias
+ * propias, para que cambiar el tono siga afectando a la app entera.
+ */
+const VOICES = {
+  // Dos notas descendentes: el aviso de siempre.
+  nag: () => ({ notes: [1, SECOND_NOTE_RATIO], decay: 1, volume: 1 }),
+  // Una nota corta y discreta, por segundo de cuenta atras.
+  tick: () => ({ notes: [1], decay: 0.28, volume: 0.55 }),
+  // Al empezar a medir, una nota mas grave y algo mas larga: cierra la cuenta.
+  go: () => ({ notes: [SECOND_NOTE_RATIO], decay: 0.8, volume: 0.85 }),
+};
+
+function chime(kind = 'nag') {
+  if (sound.volume <= 0) return;
+
+  const voice = (VOICES[kind] ?? VOICES.nag)();
+
   audio ??= new AudioContext();
   if (audio.state === 'suspended') audio.resume();
 
   const now = audio.currentTime;
-  [880, 660].forEach((freq, i) => {
-    const t = now + i * 0.14;
+  const gap = sound.gapMs / 1000;
+  const decay = (sound.decayMs / 1000) * voice.decay;
+  const volume = sound.volume * voice.volume;
+
+  voice.notes.forEach((ratio, i) => {
+    const t = now + i * gap;
     const osc = audio.createOscillator();
     const gain = audio.createGain();
 
     osc.type = 'sine';
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.12, t + 0.02); // ataque rapido
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.45); // cola larga
+    osc.frequency.value = sound.pitchHz * ratio;
+    gain.gain.setValueAtTime(SILENCE, t);
+    gain.gain.exponentialRampToValueAtTime(volume, t + ATTACK_S); // ataque rapido
+    gain.gain.exponentialRampToValueAtTime(SILENCE, t + decay); // cola
 
     osc.connect(gain).connect(audio.destination);
     osc.start(t);
-    osc.stop(t + 0.5);
+    // Un pelin mas alla del final de la rampa: cortar justo encima deja un
+    // chasquido audible.
+    osc.stop(t + decay + 0.05);
   });
 }
 
-window.bridge.onChime(() => {
-  chime();
-  if (!visible) return;
+window.bridge.onChime((kind) => {
+  chime(kind);
+  // El personaje solo se sacude con el aviso de verdad: hacerle dar botes con
+  // cada tic de la cuenta atras lo convertiria en ruido visual.
+  if (!visible || (kind && kind !== 'nag')) return;
   // La clase se retira al acabar para que la sacudida pueda repetirse.
   pet.classList.add('nudge');
   setTimeout(() => pet.classList.remove('nudge'), 600);
@@ -109,7 +155,10 @@ window.bridge.onChime(() => {
 
 // ------------------------------------------------------------------ arranque
 
-window.bridge.onConfig((cfg) => camera.configure(cfg));
+window.bridge.onConfig((cfg) => {
+  if (cfg.sound) sound = { ...sound, ...cfg.sound };
+  camera.configure(cfg);
+});
 
 /**
  * La lista de camaras la publica esta ventana, no la de ajustes: es la que
@@ -128,6 +177,8 @@ async function publishCameras() {
 navigator.mediaDevices?.addEventListener('devicechange', publishCameras);
 
 window.bridge.onCalibrate(() => camera.startCalibration());
+window.bridge.onCalibrateCancel(() => camera.abortCalibration());
+window.bridge.onPreviewToggle((on) => camera.enablePreview(on));
 
 // Avisar a main de donde ha quedado el muneco tras arrastrarlo.
 window.addEventListener('mouseup', () => window.bridge.dragEnd());

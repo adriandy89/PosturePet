@@ -5,10 +5,12 @@ import {
   MAX_YAW,
   YAW_SENSITIVE,
   PITCH_DOWN_THRESHOLD,
+  LM,
   rawFeatures,
   averageFeatures,
   deviations,
   pitchDown,
+  readiness,
   baselineLooksStale,
   score,
 } from './posture.mjs';
@@ -29,11 +31,29 @@ import { EMA, GlanceGate } from './smoothing.mjs';
 
 const WASM_PATH = '../../vendor/tasks-vision/wasm';
 const MODEL_PATH = '../../vendor/models/pose_landmarker_lite.task';
-const INTERVAL_MS = 250;
 const VIDEO = { width: 640, height: 480 };
-const CALIBRATION_MS = 3_000;
-// 30 s seguidos con el torso a otra escala antes de sugerir recalibrar.
-const STALE_FRAMES_NEEDED = 120;
+
+// Valores de partida. Los definitivos llegan de los ajustes por configure();
+// estos solo cubren el arranque, antes del primer config:update.
+const DEFAULT_INTERVAL_MS = 250;
+const DEFAULT_CALIBRATION_MS = 3_000;
+const DEFAULT_STALE_MS = 30_000;
+const DEFAULT_PREVIEW_INTERVAL_MS = 100;
+
+/**
+ * Tamano y calidad del fotograma que se manda a la ventana de ajustes.
+ *
+ * 320x240 comprimido a JPEG 0.55 son ~10 KB. A 10 fps eso es 100 KB/s por un
+ * canal de IPC dentro del mismo proceso: irrelevante. Subirlo a 640x480 lo
+ * cuadruplica sin que se note en un recuadro de este tamano.
+ */
+const PREVIEW = { width: 320, height: 240, quality: 0.55 };
+
+/** Lineas del esqueleto, por pares de landmarks. */
+const SKELETON = [
+  [LM.LEFT_EYE, LM.RIGHT_EYE],
+  [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER],
+];
 
 export class PostureCamera {
   #landmarker = null;
@@ -52,13 +72,37 @@ export class PostureCamera {
   #cameraId = undefined;
   #calibrating = null;
 
+  #intervalMs = DEFAULT_INTERVAL_MS;
+  #calibrationMs = DEFAULT_CALIBRATION_MS;
+  #staleMs = DEFAULT_STALE_MS;
+  // El suavizado se pide en milisegundos y se traduce a alphas; hay que
+  // recordarlo porque cambiar el intervalo obliga a rehacer esa traduccion.
+  #smoothingMs = 1_000;
+
+  // Preview. Todo esto solo existe mientras la capa de calibracion esta
+  // abierta: apagado no hay canvas, ni temporizador, ni landmarks retenidos.
+  #previewIntervalMs = DEFAULT_PREVIEW_INTERVAL_MS;
+  #previewTimer = null;
+  #previewCanvas = null;
+  #previewCtx = null;
+  // Los landmarks se guardan SOLO para dibujar el esqueleto, y no salen de esta
+  // ventana: se pintan sobre el canvas antes de codificar, asi que lo que cruza
+  // el IPC es una imagen, nunca coordenadas. Es la misma regla que documenta
+  // serialize() en mascot.mjs.
+  #lastLandmarks = null;
+
   /** @param onResult recibe {score, breakdown, deviations, raw} o {score:null} */
   constructor(onResult, onError) {
     this.onResult = onResult;
     this.onError = onError ?? ((e) => console.error(e));
+    /** @type {?(dataUrl: string) => void} */
+    this.onPreview = null;
   }
 
-  configure({ baseline, sensitivity, glanceGraceMs, smoothingMs, cameraId }) {
+  configure({
+    baseline, sensitivity, glanceGraceMs, smoothingMs, cameraId,
+    calibrationMs, detectionIntervalMs, staleAfterMs, previewIntervalMs,
+  }) {
     // Cambiar de camara obliga a reabrir el stream. La base deja de valer:
     // otra camara es otro angulo y otra distancia, o sea otro montaje.
     if (cameraId !== undefined && cameraId !== this.#cameraId) {
@@ -79,18 +123,153 @@ export class PostureCamera {
     }
     if (sensitivity !== undefined) this.#sensitivity = sensitivity;
     if (glanceGraceMs !== undefined) this.#glance.configure({ graceMs: glanceGraceMs });
+    if (calibrationMs !== undefined) this.#calibrationMs = calibrationMs;
+    if (staleAfterMs !== undefined) this.#staleMs = staleAfterMs;
+
+    if (previewIntervalMs !== undefined && previewIntervalMs !== this.#previewIntervalMs) {
+      this.#previewIntervalMs = previewIntervalMs;
+      if (this.#previewTimer) this.#restartPreviewLoop();
+    }
+
+    // Cambiar el ritmo de analisis obliga a rehacer los alphas: el mismo alpha
+    // a otra cadencia significa otra constante de tiempo, y el deslizador de
+    // estabilidad dejaria de valer lo que dice.
+    if (detectionIntervalMs !== undefined && detectionIntervalMs !== this.#intervalMs) {
+      this.#intervalMs = detectionIntervalMs;
+      this.#applySmoothing();
+      if (this.#timer) this.#restartLoop();
+    }
 
     if (smoothingMs !== undefined) {
-      // El usuario ajusta una constante de tiempo en ms, que es intuitiva;
-      // aqui se traduce a alpha con la relacion estandar del filtro de primer
-      // orden, alpha = 1 - e^(-dt/tau). Las proporciones entre metricas se
-      // conservan: todas escalan respecto al mismo alpha de referencia, asi que
-      // las de angulo siguen siendo tres veces mas lentas que las demas.
-      const target = 1 - Math.exp(-INTERVAL_MS / Math.max(120, smoothingMs));
-      const factor = target / REFERENCE_ALPHA;
-      this.#ema.alphas = Object.fromEntries(
-        Object.entries(ALPHAS).map(([k, a]) => [k, Math.min(0.9, a * factor)])
-      );
+      this.#smoothingMs = smoothingMs;
+      this.#applySmoothing();
+    }
+  }
+
+  /**
+   * Constante de tiempo (ms) -> alpha por metrica.
+   *
+   * El usuario ajusta una constante de tiempo, que es intuitiva; aqui se
+   * traduce con la relacion estandar del filtro de primer orden,
+   * alpha = 1 - e^(-dt/tau). Las proporciones entre metricas se conservan:
+   * todas escalan respecto al mismo alpha de referencia, asi que las de angulo
+   * siguen siendo tres veces mas lentas que las demas.
+   */
+  #applySmoothing() {
+    const target = 1 - Math.exp(-this.#intervalMs / Math.max(120, this.#smoothingMs));
+    const factor = target / REFERENCE_ALPHA;
+    this.#ema.alphas = Object.fromEntries(
+      Object.entries(ALPHAS).map(([k, a]) => [k, Math.min(0.9, a * factor)])
+    );
+  }
+
+  #restartLoop() {
+    clearInterval(this.#timer);
+    this.#timer = setInterval(() => this.#tick(), this.#intervalMs);
+  }
+
+  // ------------------------------------------------------------- preview
+
+  /**
+   * Enciende o apaga el envio de fotogramas a la ventana de ajustes.
+   *
+   * Va en un temporizador propio, no en el de deteccion: a 4 Hz el video se ve
+   * a tirones, y subir la deteccion a 10 Hz solo para que el preview luzca bien
+   * seria pagar inferencia de mas durante toda la sesion. Aqui el trabajo extra
+   * es un drawImage y un JPEG, y solo mientras la capa esta abierta.
+   */
+  enablePreview(enabled) {
+    if (Boolean(enabled) === Boolean(this.#previewTimer)) return;
+
+    if (!enabled) {
+      clearInterval(this.#previewTimer);
+      this.#previewTimer = null;
+      // Se sueltan el canvas y los landmarks: apagado no debe quedar nada de
+      // la imagen retenido en memoria.
+      this.#previewCanvas = null;
+      this.#previewCtx = null;
+      this.#lastLandmarks = null;
+      return;
+    }
+
+    this.#restartPreviewLoop();
+  }
+
+  #restartPreviewLoop() {
+    clearInterval(this.#previewTimer);
+    this.#previewTimer = setInterval(() => this.#emitPreview(), this.#previewIntervalMs);
+  }
+
+  #emitPreview() {
+    const video = this.#video;
+    if (!this.onPreview || !video || video.readyState < 2) return;
+
+    if (!this.#previewCanvas) {
+      this.#previewCanvas = document.createElement('canvas');
+      this.#previewCanvas.width = PREVIEW.width;
+      this.#previewCanvas.height = PREVIEW.height;
+      // El canvas se lee entero cada frame con toDataURL: avisarlo deja a
+      // Chromium elegir un respaldo que no penalice esas lecturas.
+      this.#previewCtx = this.#previewCanvas.getContext('2d', { willReadFrequently: true });
+    }
+
+    const ctx = this.#previewCtx;
+    ctx.drawImage(video, 0, 0, PREVIEW.width, PREVIEW.height);
+    if (this.#lastLandmarks) this.#drawSkeleton(ctx);
+
+    try {
+      this.onPreview(this.#previewCanvas.toDataURL('image/jpeg', PREVIEW.quality));
+    } catch (err) {
+      // Un canvas "tainted" no deberia ocurrir con un stream propio, pero si
+      // ocurriera, fallar en bucle cada 100 ms seria peor que apagar el preview.
+      console.warn('No se pudo generar el preview:', err.message);
+      this.enablePreview(false);
+    }
+  }
+
+  /**
+   * Cabeza y hombros sobre el fotograma. No es decoracion: es la respuesta a
+   * "me esta viendo?", que es justo lo que no se podia saber antes de calibrar.
+   *
+   * Las coordenadas de MediaPipe son fracciones del encuadre, asi que escalan
+   * al canvas sin tocar el factor de aspecto -- ese solo hace falta para medir
+   * angulos, no para pintar.
+   */
+  #drawSkeleton(ctx) {
+    const lm = this.#lastLandmarks;
+    const at = (i) => ({ x: lm[i].x * PREVIEW.width, y: lm[i].y * PREVIEW.height });
+
+    const lEye = at(LM.LEFT_EYE);
+    const rEye = at(LM.RIGHT_EYE);
+    const lSh = at(LM.LEFT_SHOULDER);
+    const rSh = at(LM.RIGHT_SHOULDER);
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(76, 154, 255, 0.9)';
+    ctx.lineCap = 'round';
+
+    for (const [a, b] of SKELETON) {
+      const p = at(a);
+      const q = at(b);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(q.x, q.y);
+      ctx.stroke();
+    }
+
+    // El cuello: de la linea de los ojos a la de los hombros. Es la metrica de
+    // mas peso, asi que verla dibujada ayuda a entender que mide la app.
+    ctx.beginPath();
+    ctx.moveTo((lEye.x + rEye.x) / 2, (lEye.y + rEye.y) / 2);
+    ctx.lineTo((lSh.x + rSh.x) / 2, (lSh.y + rSh.y) / 2);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(76, 154, 255, 0.95)';
+    for (const i of [LM.NOSE, LM.LEFT_EYE, LM.RIGHT_EYE, LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER]) {
+      const p = at(i);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 
@@ -98,9 +277,7 @@ export class PostureCamera {
     if (deviceId !== undefined) this.#cameraId = deviceId;
     await this.#initLandmarker();
     await this.#openCamera(this.#cameraId);
-
-    clearInterval(this.#timer);
-    this.#timer = setInterval(() => this.#tick(), INTERVAL_MS);
+    this.#restartLoop();
   }
 
   /**
@@ -109,9 +286,11 @@ export class PostureCamera {
    */
   async listCameras() {
     const devices = await navigator.mediaDevices.enumerateDevices();
+    // Sin etiqueta se manda el indice y el nombre lo compone la ventana de
+    // ajustes, que es la que sabe en que idioma corre la interfaz.
     return devices
       .filter((d) => d.kind === 'videoinput')
-      .map((d, i) => ({ id: d.deviceId, label: d.label || `Camara ${i + 1}` }));
+      .map((d, i) => ({ id: d.deviceId, label: d.label || '', index: i + 1 }));
   }
 
   async #initLandmarker() {
@@ -197,20 +376,28 @@ export class PostureCamera {
 
     const raw = landmarks ? rawFeatures(landmarks, aspect) : null;
 
+    // Solo se retienen si hay que dibujarlos; ver el comentario del campo.
+    if (this.#previewTimer) this.#lastLandmarks = landmarks;
+
+    // Las comprobaciones de preparacion viajan en TODOS los caminos de salida,
+    // tambien mientras se calibra: la capa las sigue mostrando durante la
+    // captura, y quedarse sin ellas a mitad las dejaria congeladas en verde.
+    const ready = readiness(landmarks, aspect, raw);
+
     if (this.#calibrating) {
       this.#calibrating.samples.push(raw);
       if (performance.now() >= this.#calibrating.until) this.#finishCalibration();
-      return { score: null, calibrating: true };
+      return { score: null, calibrating: true, ready };
     }
 
     if (!raw) {
       // Sin persona no se limpia el EMA: un parpadeo del detector no debe
       // borrar el contexto acumulado. De la ausencia larga ya se ocupa la
       // auto-pausa en policy.js.
-      return { score: null, breakdown: null, deviations: null, raw: null };
+      return { score: null, breakdown: null, deviations: null, raw: null, ready };
     }
 
-    if (!this.#baseline) return { score: null, needsCalibration: true, raw };
+    if (!this.#baseline) return { score: null, needsCalibration: true, raw, ready };
 
     // Miras al teclado? Entonces el cuello se acorta por flexion cervical, no
     // por encorvarte, y penalizarlo seria injusto. La gracia caduca: con la
@@ -238,6 +425,7 @@ export class PostureCamera {
       breakdown: s.breakdown,
       deviations: smoothed,
       raw,
+      ready,
       turned,
       stale: this.#trackStaleness(raw),
       glance: { ...glance, pitchDown: down },
@@ -252,7 +440,9 @@ export class PostureCamera {
   #trackStaleness(raw) {
     if (baselineLooksStale(raw, this.#baseline)) this.#staleFrames++;
     else this.#staleFrames = Math.max(0, this.#staleFrames - 2); // se olvida rapido
-    return this.#staleFrames >= STALE_FRAMES_NEEDED;
+    // El umbral se cuenta en frames, pero se configura en tiempo: asi cambiar
+    // la frecuencia de analisis no altera cuanto tarda en avisar.
+    return this.#staleFrames >= Math.ceil(this.#staleMs / this.#intervalMs);
   }
 
   /** Promedia ~3 s de frames para fijar la linea base personal. */
@@ -261,7 +451,20 @@ export class PostureCamera {
     // la cuenta. Reiniciar produciria dos resultados para una sola peticion, y
     // quien la pidio ya no sabria cual es el bueno.
     if (this.#calibrating) return false;
-    this.#calibrating = { samples: [], until: performance.now() + CALIBRATION_MS };
+    this.#calibrating = { samples: [], until: performance.now() + this.#calibrationMs };
+    return true;
+  }
+
+  /**
+   * Tira las muestras y no avisa a nadie.
+   *
+   * Sin esto, cancelar solo cerraria la capa: la captura seguiria hasta el
+   * final y acabaria guardando la base igualmente. El usuario habria pulsado
+   * "Cancelar" y su calibracion anterior estaria pisada de todos modos.
+   */
+  abortCalibration() {
+    if (!this.#calibrating) return false;
+    this.#calibrating = null;
     return true;
   }
 
@@ -275,10 +478,9 @@ export class PostureCamera {
     // Con menos de la mitad de frames buenos la base saldria sesgada por los
     // pocos instantes en que el detector si te vio.
     if (!baseline || validos < samples.length / 2) {
-      this.onCalibrationDone?.({
-        ok: false,
-        error: 'No se te ve bien. Colocate de frente, con los hombros visibles y buena luz.',
-      });
+      // Se manda la clave, no el texto: este modulo no sabe -- ni debe saber --
+      // en que idioma corre la interfaz que acabara mostrando el fallo.
+      this.onCalibrationDone?.({ ok: false, errorKey: 'errors.calibrationNoSubject' });
       return;
     }
 
@@ -295,6 +497,7 @@ export class PostureCamera {
   stop() {
     clearInterval(this.#timer);
     this.#timer = null;
+    this.enablePreview(false);
     this.#stopStream();
   }
 }

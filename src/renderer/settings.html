@@ -10,6 +10,14 @@
     <link rel="stylesheet" href="./settings.css" />
   </head>
   <body>
+    <!--
+      Ni un solo texto traducible en este archivo: cada uno lleva su clave en
+      data-i18n y lo rellena i18n.mjs. Cambiar de idioma es volver a recorrer
+      el DOM, sin reconstruir nada ni reiniciar la ventana.
+    -->
+
+    <!-- La cabecera no entra en las pestanas: el score y el estado son lo
+         unico que importa siempre, se este ajustando lo que se este. -->
     <header>
       <div id="score-ring">
         <svg viewBox="0 0 100 100" aria-hidden="true">
@@ -20,174 +28,424 @@
       </div>
       <div id="header-text">
         <h1>PosturePet</h1>
-        <p id="status">Iniciando la camara...</p>
+        <p id="status" data-i18n="status.starting"></p>
         <div class="row">
-          <button id="calibrate" class="primary">Calibrar postura</button>
-          <button id="pause">Pausar</button>
+          <button id="calibrate" class="primary" data-i18n="settings.calibrate"></button>
+          <button id="pause" data-i18n="settings.pause"></button>
         </div>
       </div>
+
+      <button id="about-open" data-i18n-title="settings.about.open">
+        <span class="info-mark" aria-hidden="true">i</span>
+        <span id="about-version"></span>
+      </button>
     </header>
 
+    <nav id="tabs" role="tablist" aria-label="PosturePet">
+      <button role="tab" id="tab-posture" aria-controls="panel-posture"
+              data-i18n="settings.tabs.posture"></button>
+      <button role="tab" id="tab-alerts" aria-controls="panel-alerts"
+              data-i18n="settings.tabs.alerts"></button>
+      <button role="tab" id="tab-sensitivity" aria-controls="panel-sensitivity"
+              data-i18n="settings.tabs.sensitivity"></button>
+      <button role="tab" id="tab-times" aria-controls="panel-times"
+              data-i18n="settings.tabs.times"></button>
+      <button role="tab" id="tab-camera" aria-controls="panel-camera"
+              data-i18n="settings.tabs.camera"></button>
+      <button role="tab" id="tab-system" aria-controls="panel-system"
+              data-i18n="settings.tabs.system"></button>
+    </nav>
+
     <main>
-      <section>
-        <h2>Perfil de calibracion</h2>
-        <p class="hint">
-          Tu postura correcta no es una sola: depende de la camara, la silla y la altura
-          de la mesa. Cada montaje lleva su propia calibracion y se cambia con un clic,
-          tambien desde el icono de la bandeja. Sirve igual si varias personas comparten
-          el equipo.
-        </p>
-        <div id="profiles"></div>
+      <!-- ------------------------------------------------------- POSTURA -->
+      <div class="panel" id="panel-posture" role="tabpanel" aria-labelledby="tab-posture">
+        <section>
+          <h2 data-i18n="settings.profiles.title"></h2>
+          <p class="hint" data-i18n="settings.profiles.hint"></p>
+          <div id="profiles"></div>
 
-        <!-- Edicion en linea: Electron no implementa window.prompt(). -->
-        <form class="row" id="profile-form" hidden>
-          <input type="text" id="profile-name" maxlength="40" placeholder="Portatil, Mesa alta..." />
-          <button type="submit" class="primary" id="profile-save">Guardar</button>
-          <button type="button" id="profile-cancel">Cancelar</button>
-        </form>
+          <!-- Edicion en linea: Electron no implementa window.prompt(). -->
+          <form class="row" id="profile-form" hidden>
+            <input type="text" id="profile-name" maxlength="40"
+                   data-i18n-placeholder="settings.profiles.namePlaceholder" />
+            <button type="submit" class="primary" id="profile-save"
+                    data-i18n="settings.profiles.save"></button>
+            <button type="button" id="profile-cancel"
+                    data-i18n="settings.profiles.cancel"></button>
+          </form>
 
-        <div class="row" id="profile-actions">
-          <button id="add-profile">Anadir perfil</button>
-          <button id="rename-profile">Renombrar</button>
-          <button id="delete-profile">Eliminar</button>
-        </div>
-        <p class="note warn" id="stale-note" hidden></p>
-      </section>
+          <div class="row" id="profile-actions">
+            <button id="add-profile" data-i18n="settings.profiles.add"></button>
+            <button id="rename-profile" data-i18n="settings.profiles.rename"></button>
+            <button id="delete-profile" data-i18n="settings.profiles.delete"></button>
+          </div>
+          <p class="note warn" id="stale-note" hidden></p>
+        </section>
 
-      <section>
-        <h2>Postura en vivo</h2>
-        <p class="hint">
-          Provoca cada gesto por separado y comprueba que solo sube la barra que le
-          corresponde. Aqui es donde se ajusta la sensibilidad de verdad.
-        </p>
-        <div id="metrics"></div>
-        <p class="note" id="glance-note" hidden></p>
-      </section>
+        <section>
+          <h2 data-i18n="settings.live.title"></h2>
+          <p class="hint" data-i18n="settings.live.hint"></p>
+          <div class="metrics" data-metrics></div>
+          <p class="note" id="glance-note" hidden></p>
+        </section>
+      </div>
 
-      <section>
-        <h2>Avisos</h2>
-        <p class="hint">
-          Se encadenan de menos a mas molesto: el icono reacciona al instante, el
-          personaje a los pocos segundos y oscurecer, toast y sonido solo si sigues mal.
-        </p>
-        <label class="toggle">
-          <input type="checkbox" data-alert="tray" />
-          <span><strong>Icono de bandeja</strong><em>Cambia de color junto al reloj. Coste cero.</em></span>
-        </label>
-        <label class="toggle">
-          <input type="checkbox" data-alert="mascot" />
-          <span><strong>Personaje en pantalla</strong><em>Se encorva cuando te encorvas. Arrastralo donde quieras.</em></span>
-        </label>
-        <label class="toggle">
-          <input type="checkbox" data-alert="dim" />
-          <span><strong>Oscurecer la pantalla</strong><em>Un velo negro se funde encima. Los clics lo atraviesan.</em></span>
-        </label>
-        <label class="toggle">
-          <input type="checkbox" data-alert="toast" />
-          <span><strong>Notificacion</strong><em>Aviso de Windows indicando que corregir.</em></span>
-        </label>
-        <label class="toggle">
-          <input type="checkbox" data-alert="sound" />
-          <span><strong>Sonido</strong><em>Dos notas suaves. Util a pantalla completa.</em></span>
-        </label>
+      <!-- -------------------------------------------------------- AVISOS -->
+      <div class="panel" id="panel-alerts" role="tabpanel" aria-labelledby="tab-alerts" hidden>
+        <section>
+          <div class="section-head">
+            <h2 data-i18n="settings.alerts.title"></h2>
+            <button class="reset" data-reset="alerts" data-i18n="settings.resetSection"></button>
+          </div>
+          <p class="hint" data-i18n="settings.alerts.hint"></p>
 
-        <div class="slider">
-          <label for="dimOpacity">Intensidad del oscurecido</label>
-          <input type="range" id="dimOpacity" min="0.1" max="0.7" step="0.05" />
-          <output id="dimOpacity-out"></output>
-        </div>
-      </section>
+          <label class="toggle">
+            <input type="checkbox" data-alert="tray" />
+            <span>
+              <strong data-i18n="settings.alerts.tray"></strong>
+              <em data-i18n="settings.alerts.trayHint"></em>
+            </span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" data-alert="mascot" />
+            <span>
+              <strong data-i18n="settings.alerts.mascot"></strong>
+              <em data-i18n="settings.alerts.mascotHint"></em>
+            </span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" data-alert="dim" />
+            <span>
+              <strong data-i18n="settings.alerts.dim"></strong>
+              <em data-i18n="settings.alerts.dimHint"></em>
+            </span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" data-alert="toast" />
+            <span>
+              <strong data-i18n="settings.alerts.toast"></strong>
+              <em data-i18n="settings.alerts.toastHint"></em>
+            </span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" data-alert="sound" />
+            <span>
+              <strong data-i18n="settings.alerts.sound"></strong>
+              <em data-i18n="settings.alerts.soundHint"></em>
+            </span>
+          </label>
 
-      <section>
-        <h2>Sensibilidad</h2>
-        <div class="slider">
-          <label for="sensitivity">Sensibilidad general</label>
-          <input type="range" id="sensitivity" min="0.5" max="2" step="0.1" />
-          <output id="sensitivity-out"></output>
-        </div>
-        <p class="hint">Mas alta = salta con desviaciones menores.</p>
+          <div class="slider">
+            <label for="dimOpacity" data-i18n="settings.alerts.opacity"></label>
+            <input type="range" id="dimOpacity" step="0.05" />
+            <output id="dimOpacity-out"></output>
+          </div>
 
-        <div class="slider">
-          <label for="smoothing">Estabilidad del score</label>
-          <input type="range" id="smoothing" min="300" max="4000" step="100" />
-          <output id="smoothing-out"></output>
-        </div>
-        <p class="hint">
-          Cuanto promedia antes de hacer caso. Mas alto = mas estable y mas lento en
-          reaccionar; util si el score te baila estando quieto.
-        </p>
-      </section>
+          <div class="slider">
+            <label for="dimFadeIn" data-i18n="settings.alerts.fadeIn"></label>
+            <input type="range" id="dimFadeIn" step="100" />
+            <output id="dimFadeIn-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.alerts.fadeInHint"></p>
 
-      <section>
-        <h2>Tiempos</h2>
-        <p class="hint">
-          Cada aviso espera lo suyo. Si algo te resulta pesado, casi siempre se
-          arregla subiendo un tiempo en vez de bajando la sensibilidad.
-        </p>
+          <div class="slider">
+            <label for="dimFadeOut" data-i18n="settings.alerts.fadeOut"></label>
+            <input type="range" id="dimFadeOut" step="50" />
+            <output id="dimFadeOut-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.alerts.fadeOutHint"></p>
+        </section>
 
-        <div class="slider">
-          <label for="glance">Perdonar mirar hacia abajo</label>
-          <input type="range" id="glance" min="0" max="120" step="5" />
-          <output id="glance-out"></output>
-        </div>
-        <p class="hint">
-          Mirar el teclado baja la cabeza igual que encorvarse, pero se distingue por
-          el escorzo de la cara. Durante este tiempo no cuenta. Pasado, si: estar con
-          el cuello doblado varios minutos cansa igual. En 0 se desactiva.
-        </p>
+        <section>
+          <div class="section-head">
+            <h2 data-i18n="settings.sound.title"></h2>
+            <button class="reset" data-reset="sound" data-i18n="settings.resetSection"></button>
+          </div>
+          <p class="hint" data-i18n="settings.sound.hint"></p>
 
-        <div class="slider">
-          <label for="dwell">Aguantar mal antes de avisar</label>
-          <input type="range" id="dwell" min="3" max="60" step="1" />
-          <output id="dwell-out"></output>
-        </div>
-        <p class="hint">Evita que beber cafe o girarte a hablar dispare un aviso.</p>
+          <div class="slider">
+            <label for="soundVolume" data-i18n="settings.sound.volume"></label>
+            <input type="range" id="soundVolume" step="0.01" />
+            <output id="soundVolume-out"></output>
+          </div>
 
-        <div class="slider">
-          <label for="cooldown">Minimo entre avisos</label>
-          <input type="range" id="cooldown" min="30" max="900" step="15" />
-          <output id="cooldown-out"></output>
-        </div>
-        <p class="hint">Solo afecta a notificacion y sonido; oscurecer acompana al estado.</p>
+          <div class="slider">
+            <label for="soundPitch" data-i18n="settings.sound.pitch"></label>
+            <input type="range" id="soundPitch" step="10" />
+            <output id="soundPitch-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.sound.pitchHint"></p>
 
-        <div class="slider">
-          <label for="mascotDelay">El personaje reacciona a los</label>
-          <input type="range" id="mascotDelay" min="1" max="30" step="1" />
-          <output id="mascotDelay-out"></output>
-        </div>
+          <div class="slider">
+            <label for="soundGap" data-i18n="settings.sound.gap"></label>
+            <input type="range" id="soundGap" step="10" />
+            <output id="soundGap-out"></output>
+          </div>
 
-        <div class="slider">
-          <label for="away">Auto-pausa si no te ve</label>
-          <input type="range" id="away" min="2" max="60" step="1" />
-          <output id="away-out"></output>
-        </div>
-      </section>
+          <div class="slider">
+            <label for="soundDecay" data-i18n="settings.sound.decay"></label>
+            <input type="range" id="soundDecay" step="10" />
+            <output id="soundDecay-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.sound.decayHint"></p>
 
-      <section>
-        <h2>Camara</h2>
-        <div class="slider">
-          <label for="camera">Camara a usar</label>
-          <select id="camera"></select>
-          <output></output>
-        </div>
-        <p class="hint">
-          Si tienes mas de una (la del portatil y una externa), aqui se elige. Al
-          cambiarla conviene recalibrar: otro angulo es otro montaje.
-        </p>
-      </section>
+          <div class="row">
+            <button id="test-sound" data-i18n="settings.sound.test"></button>
+          </div>
+        </section>
+      </div>
 
-      <section>
-        <h2>Sistema</h2>
-        <label class="toggle">
-          <input type="checkbox" id="autostart" />
-          <span><strong>Arrancar con Windows</strong><em>Se inicia en la bandeja, sin abrir esta ventana.</em></span>
-        </label>
-        <p class="hint" id="privacy">
-          Todo el procesamiento ocurre en este equipo. Ni la imagen ni las metricas
-          salen de aqui: la app no hace ninguna conexion de red.
-        </p>
-      </section>
+      <!-- -------------------------------------------------- SENSIBILIDAD -->
+      <div class="panel" id="panel-sensitivity" role="tabpanel"
+           aria-labelledby="tab-sensitivity" hidden>
+        <section>
+          <div class="section-head">
+            <h2 data-i18n="settings.sensitivity.title"></h2>
+            <button class="reset" data-reset="sensitivity"
+                    data-i18n="settings.resetSection"></button>
+          </div>
+
+          <div class="slider">
+            <label for="sensitivity" data-i18n="settings.sensitivity.general"></label>
+            <input type="range" id="sensitivity" step="0.1" />
+            <output id="sensitivity-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.sensitivity.generalHint"></p>
+
+          <div class="slider">
+            <label for="smoothing" data-i18n="settings.sensitivity.smoothing"></label>
+            <input type="range" id="smoothing" step="100" />
+            <output id="smoothing-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.sensitivity.smoothingHint"></p>
+
+          <div class="slider">
+            <label for="enterBad" data-i18n="settings.sensitivity.enterBad"></label>
+            <input type="range" id="enterBad" step="1" />
+            <output id="enterBad-out"></output>
+          </div>
+
+          <div class="slider">
+            <label for="exitBad" data-i18n="settings.sensitivity.exitBad"></label>
+            <input type="range" id="exitBad" step="1" />
+            <output id="exitBad-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.sensitivity.hysteresisHint"></p>
+        </section>
+
+        <!-- Las mismas barras que en la pestana Postura. Ajustar sensibilidad
+             sin verlas reaccionar es ajustar a ciegas, y obligar a cambiar de
+             pestana entre cada gesto rompe justo el bucle que hace util el
+             panel: mover, mirar, corregir. -->
+        <section>
+          <h2 data-i18n="settings.live.title"></h2>
+          <div class="metrics" data-metrics></div>
+        </section>
+      </div>
+
+      <!-- ------------------------------------------------------- TIEMPOS -->
+      <div class="panel" id="panel-times" role="tabpanel" aria-labelledby="tab-times" hidden>
+        <section>
+          <div class="section-head">
+            <h2 data-i18n="settings.times.title"></h2>
+            <button class="reset" data-reset="times" data-i18n="settings.resetSection"></button>
+          </div>
+          <p class="hint" data-i18n="settings.times.hint"></p>
+
+          <div class="slider">
+            <label for="glance" data-i18n="settings.times.glance"></label>
+            <input type="range" id="glance" step="5" />
+            <output id="glance-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.times.glanceHint"></p>
+
+          <div class="slider">
+            <label for="dwell" data-i18n="settings.times.dwell"></label>
+            <input type="range" id="dwell" step="1" />
+            <output id="dwell-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.times.dwellHint"></p>
+
+          <div class="slider">
+            <label for="cooldown" data-i18n="settings.times.cooldown"></label>
+            <input type="range" id="cooldown" step="15" />
+            <output id="cooldown-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.times.cooldownHint"></p>
+
+          <div class="slider">
+            <label for="mascotDelay" data-i18n="settings.times.mascotDelay"></label>
+            <input type="range" id="mascotDelay" step="1" />
+            <output id="mascotDelay-out"></output>
+          </div>
+
+          <div class="slider">
+            <label for="away" data-i18n="settings.times.away"></label>
+            <input type="range" id="away" step="1" />
+            <output id="away-out"></output>
+          </div>
+
+          <div class="slider">
+            <label for="calibration" data-i18n="settings.times.calibration"></label>
+            <input type="range" id="calibration" step="0.5" />
+            <output id="calibration-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.times.calibrationHint"></p>
+
+          <div class="slider">
+            <label for="countdown" data-i18n="settings.times.countdown"></label>
+            <input type="range" id="countdown" step="1" />
+            <output id="countdown-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.times.countdownHint"></p>
+        </section>
+      </div>
+
+      <!-- -------------------------------------------------------- CAMARA -->
+      <div class="panel" id="panel-camera" role="tabpanel" aria-labelledby="tab-camera" hidden>
+        <section>
+          <div class="section-head">
+            <h2 data-i18n="settings.camera.title"></h2>
+            <button class="reset" data-reset="camera" data-i18n="settings.resetSection"></button>
+          </div>
+
+          <div class="slider">
+            <label for="camera" data-i18n="settings.camera.device"></label>
+            <select id="camera"></select>
+            <output></output>
+          </div>
+          <p class="hint" data-i18n="settings.camera.hint"></p>
+
+          <div class="slider">
+            <label for="interval" data-i18n="settings.camera.interval"></label>
+            <input type="range" id="interval" step="50" />
+            <output id="interval-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.camera.intervalHint"></p>
+
+          <div class="slider">
+            <label for="stale" data-i18n="settings.camera.stale"></label>
+            <input type="range" id="stale" step="5" />
+            <output id="stale-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.camera.staleHint"></p>
+
+          <div class="slider">
+            <label for="preview" data-i18n="settings.camera.preview"></label>
+            <input type="range" id="preview" step="10" />
+            <output id="preview-out"></output>
+          </div>
+          <p class="hint" data-i18n="settings.camera.previewHint"></p>
+        </section>
+      </div>
+
+      <!-- ------------------------------------------------------- SISTEMA -->
+      <div class="panel" id="panel-system" role="tabpanel" aria-labelledby="tab-system" hidden>
+        <section>
+          <h2 data-i18n="settings.language.title"></h2>
+          <div class="slider">
+            <label for="locale" data-i18n="settings.language.label"></label>
+            <select id="locale"></select>
+            <output></output>
+          </div>
+          <p class="hint" data-i18n="settings.language.hint"></p>
+        </section>
+
+        <section>
+          <h2 data-i18n="settings.system.title"></h2>
+          <label class="toggle">
+            <input type="checkbox" id="autostart" />
+            <span>
+              <strong data-i18n="settings.system.autostart"></strong>
+              <em data-i18n="settings.system.autostartHint"></em>
+            </span>
+          </label>
+
+          <div class="row">
+            <button id="reset-all" data-i18n="settings.system.reset"></button>
+          </div>
+          <p class="hint" data-i18n="settings.system.resetHint"></p>
+
+          <p class="hint" id="privacy" data-i18n="settings.system.privacy"></p>
+        </section>
+      </div>
     </main>
+
+    <!--
+      Capa de calibración. Va dentro de esta ventana y no en una aparte: una
+      ventana nueva tendría que repetir el CSP, pelearse por el foco y podría
+      quedar tapada justo cuando el usuario está mirando a la cámara.
+
+      El vídeo es un <img> al que llegan fotogramas ya codificados desde la
+      ventana del personaje, que es la dueña de la cámara. Un <video> aquí
+      estaría bloqueado por el CSP (`default-src 'none'`, sin media-src), y
+      abrir un segundo stream se pelearía con el detector por el dispositivo.
+    -->
+    <div id="calib" hidden>
+      <div id="calib-box" role="dialog" aria-modal="true" aria-labelledby="calib-title">
+        <h2 id="calib-title" data-i18n="settings.calibration.title"></h2>
+        <p class="hint" data-i18n="settings.calibration.intro"></p>
+
+        <div id="calib-stage">
+          <img id="calib-video" alt="" />
+          <div id="calib-countdown" hidden></div>
+          <!-- Barra al pie y no un anillo centrado: durante la captura hay que
+               seguir viéndose la cara, que es lo que se está midiendo. -->
+          <div id="calib-progress" aria-hidden="true" hidden>
+            <div id="calib-bar"></div>
+          </div>
+        </div>
+
+        <ul id="calib-checks"></ul>
+
+        <p class="note" id="calib-note"></p>
+
+        <div class="row" id="calib-actions">
+          <button id="calib-cancel" data-i18n="settings.calibration.cancel"></button>
+          <button id="calib-retry" class="primary" data-i18n="settings.calibration.retry" hidden></button>
+          <button id="calib-undo" data-i18n="settings.calibration.undo" hidden></button>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      Modal de información. El botón de buscar actualización es la única cosa
+      de toda la app que toca la red, y la petición no la hace esta ventana: la
+      hace el proceso principal, para no tener que abrirle connect-src a nadie
+      en el CSP. Ver src/main/updates.js.
+    -->
+    <div id="about" hidden>
+      <div id="about-box" role="dialog" aria-modal="true" aria-labelledby="about-title">
+        <h2 id="about-title" data-i18n="settings.about.title"></h2>
+        <p class="version" id="about-version-line"></p>
+
+        <p data-i18n="settings.about.what"></p>
+
+        <p class="claim"><strong data-i18n="settings.about.privacy"></strong></p>
+        <p class="hint" data-i18n="settings.about.privacyDetail"></p>
+
+        <hr />
+
+        <p data-i18n="settings.about.network"></p>
+        <div class="row">
+          <button id="about-check" class="primary" data-i18n="settings.about.check"></button>
+          <button id="about-download" hidden></button>
+        </div>
+        <p class="note" id="about-result"></p>
+        <p class="hint" data-i18n="settings.about.networkDetail"></p>
+
+        <hr />
+
+        <p class="hint">
+          <span data-i18n="settings.about.license"></span>
+          <a id="about-repo" href="#" data-i18n="settings.about.repo"></a>
+        </p>
+
+        <div class="row">
+          <button id="about-close" data-i18n="settings.about.close"></button>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="./settings.mjs"></script>
   </body>

@@ -74,31 +74,30 @@ const MIN_VISIBILITY = 0.5;
  * cola hasta 4. Un umbral de 3 grados quedaria POR DEBAJO del ruido del propio
  * modelo. A eso se suma que sostener el raton sube un hombro varios grados de
  * forma continua y perfectamente normal.
+ *
+ * El nombre visible de cada metrica NO esta aqui: vive en los catalogos de
+ * idioma, bajo `metrics.<clave>`. Este modulo es geometria pura y no deberia
+ * saber en que idioma corre la app -- y ademas el desglose viaja por IPC, asi
+ * que incrustar el texto obligaria a recalcularlo al cambiar de idioma.
  */
 export const METRICS = {
   // La metrica principal. Se acorta tanto al encorvarte (la cabeza baja) como
   // al redondear o encoger los hombros (suben hacia las orejas). De frente esas
   // dos cosas no se pueden separar del todo, y tampoco hace falta: ambas son el
   // mismo problema cervical y se corrigen con el mismo gesto.
-  neckLength: { weight: 0.34, good: 0.10, bad: 0.55, dir: 'down', alpha: 0.22,
-    label: 'Cuello acortado' },
+  neckLength: { weight: 0.34, good: 0.10, bad: 0.55, dir: 'down', alpha: 0.22 },
 
-  proximity: { weight: 0.28, good: 0.05, bad: 0.20, dir: 'up', alpha: 0.22,
-    label: 'Acercamiento' },
+  proximity: { weight: 0.28, good: 0.05, bad: 0.20, dir: 'up', alpha: 0.22 },
 
   // Dos sentidos a proposito: hacia abajo es escurrirse en la silla, hacia
   // arriba es encoger los hombros por tension. Los dos son postura mala.
-  shoulderHeight: { weight: 0.16, good: 0.18, bad: 0.75, dir: 'both', alpha: 0.15,
-    label: 'Altura de hombros' },
+  shoulderHeight: { weight: 0.16, good: 0.18, bad: 0.75, dir: 'both', alpha: 0.15 },
 
-  shoulderTilt: { weight: 0.08, good: 7.0, bad: 22.0, dir: 'both', alpha: 0.08,
-    label: 'Inclinacion de hombros' },
+  shoulderTilt: { weight: 0.08, good: 7.0, bad: 22.0, dir: 'both', alpha: 0.08 },
 
-  headRoll: { weight: 0.07, good: 5.0, bad: 18.0, dir: 'both', alpha: 0.10,
-    label: 'Ladeo de cabeza' },
+  headRoll: { weight: 0.07, good: 5.0, bad: 18.0, dir: 'both', alpha: 0.10 },
 
-  driftX: { weight: 0.07, good: 0.35, bad: 1.30, dir: 'both', alpha: 0.15,
-    label: 'Deriva lateral' },
+  driftX: { weight: 0.07, good: 0.35, bad: 1.30, dir: 'both', alpha: 0.15 },
 };
 
 /** Alphas por metrica, en el formato que espera EMA. */
@@ -131,6 +130,30 @@ export const YAW_SENSITIVE = ['proximity', 'neckLength', 'shoulderHeight', 'drif
 
 /** Cuanto puede alejarse shoulderSpan de la base antes de sospechar. */
 export const SPAN_DRIFT_LIMIT = 0.22;
+
+/**
+ * Margen del encuadre, en fraccion de ancho, dentro del cual un hombro se
+ * considera "pegado al borde". Calibrar con un hombro medio fuera fija una base
+ * que deja de valer en cuanto te recolocas.
+ */
+export const FRAME_MARGIN = 0.04;
+
+/**
+ * Banda de separacion entre ojos admisible para calibrar, en alturas de imagen.
+ *
+ * Deliberadamente ANCHA. Su unico trabajo es cazar los dos extremos absurdos --
+ * estar tan lejos que el modelo apenas te distinga, o tan cerca que los hombros
+ * no quepan -- y no opinar sobre nada intermedio. Una banda estrecha aqui seria
+ * mucho peor que no tenerla: bloquearia la calibracion, que es la operacion sin
+ * la cual la app no puntua nada.
+ */
+export const EYE_WIDTH_BAND = [0.05, 0.34];
+
+/**
+ * Dispersion maxima de las muestras antes de avisar de que te has movido.
+ * En anchos de cara: 0.12 es un movimiento claro, no un temblor.
+ */
+export const MOVEMENT_LIMIT = 0.12;
 
 const RAD2DEG = 180 / Math.PI;
 
@@ -253,6 +276,83 @@ export function rawFeatures(landmarks, aspect = 16 / 9) {
   };
 }
 
+/**
+ * Estas listo para calibrar?
+ *
+ * Cada comprobacion corresponde a una forma concreta de que la base salga mal,
+ * y todas se responden con lo que el detector ya calcula. Existen para mover el
+ * fallo ANTES de la cuenta atras: descubrir que no se te veia bien despues de
+ * haber aguantado quieto tres segundos es la peor version de este error.
+ *
+ * Devuelve booleanos planos a proposito: viajan por IPC hasta la ventana de
+ * ajustes, y los landmarks no deben salir de aqui.
+ */
+export function readiness(landmarks, aspect = 16 / 9, raw = rawFeatures(landmarks, aspect)) {
+  if (!raw) {
+    return {
+      seen: false,
+      shouldersInFrame: false,
+      facingCamera: false,
+      distanceOk: false,
+      allReady: false,
+    };
+  }
+
+  // Los hombros se miran en coordenadas normalizadas crudas (0-1), sin el
+  // factor de aspecto: lo que importa aqui es el borde del encuadre, no una
+  // magnitud del cuerpo.
+  const lSh = landmarks[LM.LEFT_SHOULDER];
+  const rSh = landmarks[LM.RIGHT_SHOULDER];
+  const inFrame = (p) =>
+    p.x >= FRAME_MARGIN && p.x <= 1 - FRAME_MARGIN &&
+    p.y >= FRAME_MARGIN && p.y <= 1 - FRAME_MARGIN;
+
+  const checks = {
+    seen: true,
+    shouldersInFrame: inFrame(lSh) && inFrame(rSh),
+    facingCamera: raw.faceYaw <= MAX_YAW,
+    distanceOk: raw.eyeWidth >= EYE_WIDTH_BAND[0] && raw.eyeWidth <= EYE_WIDTH_BAND[1],
+  };
+
+  return { ...checks, allReady: Object.values(checks).every(Boolean) };
+}
+
+/** Media y desviacion tipica de una lista de numeros. */
+function stats(values) {
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, v) => a + (v - mean) ** 2, 0) / values.length;
+  return { mean, sd: Math.sqrt(variance) };
+}
+
+/**
+ * Cuanto te has movido durante la calibracion, en anchos de cara.
+ *
+ * Promediar sin mirar la dispersion acepta encantado una base emborronada: si
+ * te has recolocado a mitad, la media cae entre las dos posturas y no
+ * corresponde a ninguna. Luego el score puntua mal y no hay forma de saber por
+ * que, porque nada ha fallado.
+ *
+ * Se toma el maximo de las tres magnitudes que definen la base, cada una
+ * llevada a la misma unidad (anchos de cara) para que sean comparables.
+ */
+export function movementSpread(samples) {
+  const valid = samples.filter(Boolean);
+  if (valid.length < 2) return 0;
+
+  const eye = stats(valid.map((s) => s.eyeWidth));
+  if (eye.mean < 1e-6) return 0;
+
+  return Math.max(
+    // Ya viene en anchos de cara.
+    stats(valid.map((s) => s.neckLength)).sd,
+    // Coordenadas del encuadre: se dividen por la escala para compararlas.
+    stats(valid.map((s) => s.shoulderMidX)).sd / eye.mean,
+    stats(valid.map((s) => s.shoulderMidY)).sd / eye.mean,
+    // Acercarse o alejarse tambien es moverse; aqui la desviacion es relativa.
+    eye.sd / eye.mean
+  );
+}
+
 /** Promedia N frames crudos para fijar la linea base personal. */
 export function averageFeatures(samples) {
   const valid = samples.filter(Boolean);
@@ -264,6 +364,7 @@ export function averageFeatures(samples) {
     out[k] = valid.reduce((sum, s) => sum + s[k], 0) / valid.length;
   }
   out.sampleCount = valid.length;
+  out.spread = movementSpread(valid);
   return out;
 }
 
@@ -364,7 +465,6 @@ export function score(devs, { sensitivity = 1.0, suppress = null } = {}) {
     const badness = muted ? 0 : ramp(magnitude, cfg.good / sensitivity, cfg.bad / sensitivity);
 
     breakdown[name] = {
-      label: cfg.label,
       deviation: dev,
       magnitude,
       badness,

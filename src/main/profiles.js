@@ -16,9 +16,15 @@
  *   2. activeProfileId SIEMPRE apunta a un perfil existente.
  */
 
-const DEFAULT_PROFILE = () => ({
+/**
+ * Los nombres entran por parametro en vez de leerse del catalogo de idiomas:
+ * este modulo es puro a proposito, y requerir i18n aqui lo ataria al proceso
+ * principal. Los valores por defecto son los espanoles historicos, asi que
+ * quien llame sin traducir obtiene exactamente lo de siempre.
+ */
+const DEFAULT_PROFILE = (name = 'Escritorio') => ({
   id: 'default',
-  name: 'Escritorio',
+  name,
   baseline: null,
   createdAt: 0,
 });
@@ -27,14 +33,14 @@ const DEFAULT_PROFILE = () => ({
  * Repara cualquier estado de perfiles, venga de donde venga: un settings.json
  * viejo sin perfiles, uno editado a mano, o uno corrompido.
  */
-function normalize(stored) {
+function normalize(stored, defaultName) {
   let profiles = Array.isArray(stored?.profiles) ? stored.profiles.filter(isValid) : [];
 
   // Migracion desde cuando la base era un campo suelto, antes de los perfiles.
   if (profiles.length === 0 && stored?.baseline) {
-    profiles = [{ ...DEFAULT_PROFILE(), baseline: stored.baseline }];
+    profiles = [{ ...DEFAULT_PROFILE(defaultName), baseline: stored.baseline }];
   }
-  if (profiles.length === 0) profiles = [DEFAULT_PROFILE()];
+  if (profiles.length === 0) profiles = [DEFAULT_PROFILE(defaultName)];
 
   const activeProfileId = profiles.some((p) => p.id === stored?.activeProfileId)
     ? stored.activeProfileId
@@ -59,10 +65,10 @@ const withBaseline = (state, baseline, now) => ({
 });
 
 /** Anade y activa: crear un perfil siempre va seguido de calibrarlo. */
-function add(state, name, id, now) {
+function add(state, name, id, now, autoName = (n) => `Perfil ${n}`) {
   const profile = {
     id,
-    name: name?.trim() || `Perfil ${state.profiles.length + 1}`,
+    name: name?.trim() || autoName(state.profiles.length + 1),
     baseline: null,
     createdAt: now,
   };
