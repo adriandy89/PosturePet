@@ -106,10 +106,16 @@ jobs:
       - name: Generar SHA256SUMS.txt
         shell: pwsh
         run: |
-          Get-ChildItem dist/*.exe | Sort-Object Name | ForEach-Object {
+          $lines = Get-ChildItem dist/*.exe | Sort-Object Name | ForEach-Object {
             $asset = $_.Name -replace ' ', '.'
             "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $asset"
-          } | Set-Content dist/SHA256SUMS.txt -Encoding utf8
+          }
+          # WriteAllText y no Set-Content: en Windows, Set-Content termina cada
+          # linea con CRLF, y `sha256sum -c` de Linux/macOS/WSL se lleva el \r
+          # pegado al nombre del archivo y no lo encuentra. El archivo parece
+          # correcto al abrirlo y solo falla al usarlo, que es para lo unico
+          # que existe.
+          [IO.File]::WriteAllText("$PWD/dist/SHA256SUMS.txt", ($lines -join "`n") + "`n")
 
       - name: Publicar release
         uses: softprops/action-gh-release@v2
