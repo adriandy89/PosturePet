@@ -11,22 +11,45 @@ guarda ni se transmite nunca.
 
 ## Novedades
 
-**Seis personajes para elegir**, en la pestaña nueva de Ajustes → Personaje:
-Blob (el de siempre), Gato, Búho, Planta, Tortuga y Robot. La rejilla deja
-probar cada estado antes de decidir, porque un personaje se elige por cómo se
-ve cuando te está riñendo, no por cómo se ve quieto.
+Esta versión no trae nada nuevo que mirar: arregla que la app se comiera el
+equipo. Si la tenías arrancando con Windows, **actualiza**.
 
-**Y ahora se les nota mucho más lo que sienten.** Tienen pupilas que miran
-hacia abajo cuando te encorvas y se abren de golpe con el aviso; en postura
-mala sudan, tiemblan y fruncen el ceño; y cada uno reacciona a su manera —a la
-planta se le caen las hojas, el gato baja las orejas, la tortuga esconde la
-cabeza en el caparazón y al robot se le enciende la antena.
+**Arreglada una fuga que llegaba a varios GB y decenas de procesos.** Cada vez
+que un monitor se dormía o se despertaba, la capa oscurecedora registraba otra
+vez sus vigilantes de pantalla sin quitar los anteriores, y el número se
+**cuadruplicaba** en cada ciclo. Tras unas horas encendida, el proceso
+principal se quedaba minutos enteros bloqueado reconstruyendo la capa miles de
+veces. Medido antes y después, con doce ciclos de suspender y despertar:
 
-**Al enderezarte, el personaje da un salto y sonríe.** Hasta ahora la app solo
-sabía castigar.
+| | antes | ahora |
+|---|---|---|
+| Memoria | 896 MB → 2,9 GB, sin devolverla | 945 MB, plana |
+| Procesos (pico) | 87 | 8 |
+| Bloqueo del proceso principal | hasta 101 s | 0 ms |
 
-**En pausa se duerme (`zZz`) y cuando pierde la cámara te busca con una `?`.**
-Antes los dos estados se veían idénticos y no había forma de saber cuál era.
+**La pausa ahora apaga la cámara de verdad.** Antes solo dejaba de *mirar* los
+fotogramas: la webcam seguía encendida —con su piloto— y el detector seguía
+trabajando para tirar el resultado a la basura. Ahora se suelta el dispositivo,
+y Windows lo confirma en su indicador de privacidad.
+
+**Y al reanudar ya no salta la alarma entera de golpe.** Si pausabas encorvado
+y volvías media hora después, el cronómetro de permanencia seguía contando
+durante la pausa: el primer fotograma disparaba oscurecimiento, aviso y sonido
+a la vez. Ahora la cuenta empieza de cero al volver.
+
+**Arreglado el error de JavaScript al cerrar la app** con la ventana de Ajustes
+abierta (*«Object has been destroyed»*).
+
+**Menos consumo en reposo:** 6 procesos y ~763 MB en vez de 8 y ~900 MB. Las
+ventanas del velo oscurecedor ya no se crean al arrancar —nacen la primera vez
+que hacen falta y se sueltan cuando dejan de hacerla—, la cámara captura a 15
+fotogramas por segundo en vez de a 30 para analizar 4, y se han quitado un
+temporizador a 20 Hz que corría en vacío y una animación que repintaba al
+personaje 60 veces por segundo.
+
+**Dos arreglos pequeños de la interfaz:** «Calibrar» desde la bandeja ya
+funciona con Ajustes abierto (antes no hacía nada), y el botón de pausa de
+Ajustes ya se entera cuando pausas desde la bandeja.
 
 ## Qué descargar
 
