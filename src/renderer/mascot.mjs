@@ -60,6 +60,7 @@ let visible = true;
 let avatar = null;
 let state = 'paused';
 let reliefTimer = null;
+let nudgeTimer = null;
 
 /**
  * Las clases se tocan una a una con classList y no reescribiendo className.
@@ -107,6 +108,19 @@ window.bridge.onState(({ state: next, level, alarmed }) => {
   setState('good');
 });
 
+/**
+ * La pausa suelta la camara, no solo cambia la cara del personaje. Se pinta el
+ * estado igual: reanudar puede tardar unos cientos de milisegundos en reabrir
+ * el dispositivo, y hasta entonces no llega ningun frame que lo refresque.
+ */
+window.bridge.onPaused((paused) => {
+  camera.setPaused(paused).catch((err) => {
+    console.error('No se pudo reabrir la camara al reanudar:', err);
+    setState('blind');
+    window.bridge.sendFrame({ score: null, cameraError: err.message });
+  });
+});
+
 window.bridge.onVisible((v) => {
   visible = v;
   // La ventana no se oculta nunca (eso frenaria la camara): se encoge a 1x1
@@ -123,6 +137,25 @@ window.bridge.onVisible((v) => {
  * pero no sobresalta como una alarma.
  */
 let audio = null;
+
+/**
+ * El contexto se suspende en cuanto la ultima nota se apaga, y se reanuda en el
+ * siguiente aviso.
+ *
+ * Un AudioContext en marcha no se calla nunca: mantiene abierto un flujo de
+ * salida y sigue generando silencio a 48 kHz en su propio hilo, para siempre,
+ * entre avisos que llegan cada dos minutos y medio.
+ *
+ * Lo que NO hace es ahorrar memoria: el servicio de audio de Chromium (~71 MB
+ * en un proceso aparte) ya esta levantado desde el arranque por la tuberia de
+ * medios de la camara, y sigue ahi con el contexto suspendido. Esta medido; no
+ * se espere ver bajar la memoria por esto.
+ *
+ * No se cierra con close(): es irreversible, y crear un contexto nuevo cuesta
+ * mas que despertar el que ya hay.
+ */
+let suspendTimer = null;
+const SUSPEND_MARGIN_S = 0.3;
 
 /**
  * Intervalo entre las dos notas: una cuarta justa descendente (3/4 de la
@@ -153,13 +186,17 @@ const VOICES = {
   go: () => ({ notes: [SECOND_NOTE_RATIO], decay: 0.8, volume: 0.85 }),
 };
 
-function chime(kind = 'nag') {
+async function chime(kind = 'nag') {
   if (sound.volume <= 0) return;
 
   const voice = (VOICES[kind] ?? VOICES.nag)();
 
   audio ??= new AudioContext();
-  if (audio.state === 'suspended') audio.resume();
+  // Se ESPERA a que reanude antes de leer currentTime: mientras esta suspendido
+  // el reloj del contexto no avanza, y programar sobre un reloj parado dejaba
+  // las notas en el pasado -- o sea, en silencio. Ahora que se suspende tras
+  // cada aviso, este camino es el normal y no la excepcion.
+  if (audio.state === 'suspended') await audio.resume();
 
   const now = audio.currentTime;
   const gap = sound.gapMs / 1000;
@@ -183,16 +220,31 @@ function chime(kind = 'nag') {
     // chasquido audible.
     osc.stop(t + decay + 0.05);
   });
+
+  // El tic de la cuenta atras llega una vez por segundo: el temporizador se
+  // reprograma en cada nota para que la suspension caiga despues de la ultima,
+  // no en medio de la cuenta.
+  const lastNoteEnds = (voice.notes.length - 1) * gap + decay + 0.05;
+  clearTimeout(suspendTimer);
+  suspendTimer = setTimeout(() => {
+    suspendTimer = null;
+    if (audio?.state === 'running') audio.suspend();
+  }, (lastNoteEnds + SUSPEND_MARGIN_S) * 1000);
 }
 
 window.bridge.onChime((kind) => {
-  chime(kind);
+  // No se espera: el sonido va por su cuenta y un fallo del contexto de audio
+  // no debe tumbar el resto del manejador.
+  chime(kind).catch((err) => console.warn('No se pudo sonar el aviso:', err.message));
   // El personaje solo se sacude con el aviso de verdad: hacerle dar botes con
   // cada tic de la cuenta atras lo convertiria en ruido visual.
   if (!visible || (kind && kind !== 'nag')) return;
-  // La clase se retira al acabar para que la sacudida pueda repetirse.
+  // La clase se retira al acabar para que la sacudida pueda repetirse. El
+  // temporizador anterior se cancela, como con `relief`: dos avisos seguidos
+  // dejaban al primero quitando la clase en mitad de la segunda sacudida.
+  clearTimeout(nudgeTimer);
   pet.classList.add('nudge');
-  setTimeout(() => pet.classList.remove('nudge'), 600);
+  nudgeTimer = setTimeout(() => pet.classList.remove('nudge'), 600);
 });
 
 // ------------------------------------------------------------------ arranque

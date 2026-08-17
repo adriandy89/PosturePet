@@ -134,6 +134,7 @@ module.exports = {
     calibrationTimeout: 'Se agotó el tiempo. Revisa que la cámara te vea.',
     calibrationNoSubject:
       'No se te ve bien. Colócate de frente, con los hombros visibles y buena luz.',
+    calibrationPaused: 'La vigilancia está en pausa. Reanúdala para poder calibrar.',
   },
 
   // -------------------------------------------------------------------- camara

@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('api', {
 
   togglePause: () => ipcRenderer.invoke('pause:toggle'),
   isPaused: () => ipcRenderer.invoke('pause:get'),
+  // La pausa tambien se conmuta desde la bandeja, con esta ventana abierta.
+  onPause: (cb) => ipcRenderer.on('pause:update', (_e, paused) => cb(paused)),
   lastFrame: () => ipcRenderer.invoke('frame:last'),
 
   getCameras: () => ipcRenderer.invoke('cameras:get'),

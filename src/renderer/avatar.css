@@ -328,14 +328,18 @@
 /* Temblor muy leve, y sobre .face y no sobre .head: la cabeza ya tiene una
    transicion de transform para encorvarse, y una animacion sobre la misma
    propiedad la anularia -- el muneco dejaria de agacharse. */
+/* En pasos y no interpolada: `linear` obligaba a recalcular y repintar el SVG
+   en cada fotograma de pantalla (~60 veces por segundo) durante todo el rato
+   que durase la mala postura. Con steps() el valor solo cambia dos veces por
+   ciclo, asi que se repinta ~8 veces por segundo en vez de 60 -- y un temblor
+   a saltos es, de hecho, mas creible que uno suavizado. */
 .pet.state-bad .face {
-  animation: tremble 0.22s linear infinite;
+  animation: tremble 0.24s steps(1, end) infinite;
 }
 
 @keyframes tremble {
-  0%, 100% { translate: 0 0; }
-  25% { translate: 0.35px 0; }
-  75% { translate: -0.35px 0; }
+  0% { translate: 0.35px 0; }
+  50% { translate: -0.35px 0; }
 }
 
 /* Sacudida breve al saltar el aviso. Se dispara anadiendo la clase desde JS

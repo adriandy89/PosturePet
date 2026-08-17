@@ -31,7 +31,19 @@ import { EMA, GlanceGate } from './smoothing.mjs';
 
 const WASM_PATH = '../../vendor/tasks-vision/wasm';
 const MODEL_PATH = '../../vendor/models/pose_landmarker_lite.task';
-const VIDEO = { width: 640, height: 480 };
+/**
+ * Sin pedir `frameRate` la webcam entrega lo que quiera -- 30 fps en casi
+ * todas -- y el navegador decodifica y sube a la GPU cada uno de esos
+ * fotogramas para que aqui se analicen 4. Se piden 15: cubre de sobra el
+ * analisis (detectionIntervalMs no baja de 150 ms, o sea 6,7 Hz) y el preview
+ * de la calibracion en su valor por defecto (10 Hz), y reduce a la mitad el
+ * trabajo de captura del servicio de video y del proceso GPU.
+ *
+ * Con previewIntervalMs en su minimo (50 ms, 20 Hz) el recuadro de la
+ * calibracion repetira algun fotograma. Es un recuadro de 320x240 abierto
+ * durante unos segundos: no compensa capturar al doble toda la sesion por eso.
+ */
+const VIDEO = { width: 640, height: 480, frameRate: { ideal: 15, max: 15 } };
 
 // Valores de partida. Los definitivos llegan de los ajustes por configure();
 // estos solo cubren el arranque, antes del primer config:update.
@@ -71,6 +83,7 @@ export class PostureCamera {
   #sensitivity = 1;
   #cameraId = undefined;
   #calibrating = null;
+  #paused = false;
 
   #intervalMs = DEFAULT_INTERVAL_MS;
   #calibrationMs = DEFAULT_CALIBRATION_MS;
@@ -166,6 +179,66 @@ export class PostureCamera {
   #restartLoop() {
     clearInterval(this.#timer);
     this.#timer = setInterval(() => this.#tick(), this.#intervalMs);
+  }
+
+  get paused() {
+    return this.#paused;
+  }
+
+  /**
+   * Pausa de verdad: para el bucle Y SUELTA LA CAMARA.
+   *
+   * Parar solo el temporizador dejaba el stream abierto, o sea el piloto de la
+   * webcam encendido y el servicio de captura de video de Chromium
+   * decodificando fotogramas que nadie iba a mirar. En una app cuyo argumento
+   * es que nada sale del equipo, una pausa con el piloto encendido es lo peor
+   * que se puede ensenar -- y ademas era gasto puro.
+   *
+   * El detector de MediaPipe NO se cierra: es lo unico caro de montar (compilar
+   * el WASM y subir el modelo), y conservarlo hace que reanudar sea inmediato.
+   * Lo que se libera es lo que de verdad cuesta mientras no se usa.
+   */
+  async setPaused(paused) {
+    const next = Boolean(paused);
+    if (next === this.#paused) return;
+    this.#paused = next;
+
+    if (next) {
+      clearInterval(this.#timer);
+      this.#timer = null;
+      this.enablePreview(false);
+      // Una calibracion a medias no sobrevive a la pausa: sus muestras se
+      // quedarian a medio recoger y al reanudar se promediarian con las nuevas,
+      // fijando una base mitad de antes y mitad de despues.
+      this.#calibrating = null;
+      this.#stopStream();
+      return;
+    }
+
+    try {
+      await this.#openCamera(this.#cameraId);
+    } catch (err) {
+      // Se vuelve al estado de pausa para que un segundo intento de reanudar lo
+      // reintente. Sin esto, un fallo al reabrir la camara la dejaba muerta
+      // hasta reiniciar la app: la guarda de arriba veria que ya no esta en
+      // pausa y no haria nada.
+      this.#paused = true;
+      throw err;
+    }
+
+    // Puede haber llegado otra pausa mientras se abria la camara.
+    if (this.#paused) {
+      this.#stopStream();
+      return;
+    }
+
+    // Lo acumulado antes de la pausa ya no describe nada: entre medias te has
+    // levantado. Arrancar con el historial viejo daria una puntuacion inventada
+    // durante los primeros segundos.
+    this.#ema.reset();
+    this.#glance.reset();
+    this.#staleFrames = 0;
+    this.#restartLoop();
   }
 
   // ------------------------------------------------------------- preview
@@ -447,6 +520,10 @@ export class PostureCamera {
 
   /** Promedia ~3 s de frames para fijar la linea base personal. */
   startCalibration() {
+    // En pausa no hay camara abierta: aceptar aqui dejaria la captura esperando
+    // muestras que no van a llegar hasta que el proceso principal se cansara.
+    // Quien decide que decirle al usuario es main.js, que rechaza antes.
+    if (this.#paused) return false;
     // Una peticion que llega con otra en curso se ignora en vez de reiniciar
     // la cuenta. Reiniciar produciria dos resultados para una sola peticion, y
     // quien la pidio ya no sabria cual es el bueno.
@@ -492,6 +569,10 @@ export class PostureCamera {
   #stopStream() {
     this.#stream?.getTracks().forEach((t) => t.stop());
     this.#stream = null;
+    // Parar las pistas no basta: el <video> sigue apuntando al stream, asi que
+    // no se libera y conserva el ultimo fotograma decodificado. Con la camara
+    // suelta el elemento tiene que quedarse vacio.
+    if (this.#video) this.#video.srcObject = null;
   }
 
   stop() {

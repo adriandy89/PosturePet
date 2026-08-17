@@ -126,6 +126,7 @@ module.exports = {
     calibrationTimeout: 'Timed out. Check that the camera can see you.',
     calibrationNoSubject:
       "I can't see you well enough. Face the camera, shoulders visible, with good light.",
+    calibrationPaused: 'Monitoring is paused. Resume it to calibrate.',
   },
 
   // ------------------------------------------------------------------ camera

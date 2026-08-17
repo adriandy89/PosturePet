@@ -20,4 +20,6 @@ contextBridge.exposeInMainWorld('bridge', {
   onPreviewToggle: (cb) => ipcRenderer.on('mascot:preview', (_e, on) => cb(on)),
   onChime: (cb) => ipcRenderer.on('mascot:chime', (_e, kind) => cb(kind)),
   onVisible: (cb) => ipcRenderer.on('mascot:visible', (_e, v) => cb(v)),
+  // La pausa apaga la camara y suelta el stream; no es solo un cambio de cara.
+  onPaused: (cb) => ipcRenderer.on('mascot:paused', (_e, p) => cb(p)),
 });

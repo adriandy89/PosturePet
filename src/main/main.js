@@ -77,6 +77,35 @@ let previousBaseline = null;
 /** Cancela la calibracion en curso, si la hay. La instala el handler. */
 let cancelPendingCalibration = null;
 
+// ------------------------------------------------------------------- envios
+
+/**
+ * Manda un mensaje a una ventana solo si sigue existiendo.
+ *
+ * `win?.webContents` NO basta: el `?.` cubre el null, pero leer `.webContents`
+ * de una BrowserWindow ya destruida lanza "Object has been destroyed". Y eso
+ * ocurre de verdad al cerrar la app, donde el orden de destruccion decide si el
+ * evento 'closed' de una ventana encuentra viva a la otra: cerrar con la
+ * ventana de ajustes abierta disparaba su 'closed' -> setPreview(false) ->
+ * mascotWindow ya destruida, y Electron ensenaba su dialogo rojo de error justo
+ * al salir.
+ *
+ * Se comprueban las dos cosas: la ventana y su webContents pueden morir por
+ * separado (un renderer que se cae deja la ventana en pie).
+ */
+function sendTo(win, channel, payload) {
+  if (!win || win.isDestroyed()) return;
+  const wc = win.webContents;
+  if (!wc || wc.isDestroyed()) return;
+  wc.send(channel, payload);
+}
+
+const toMascot = (channel, payload) => sendTo(mascotWindow, channel, payload);
+const toSettings = (channel, payload) => sendTo(settingsWindow, channel, payload);
+
+/** ¿Esta la ventana de ajustes abierta y usable? */
+const settingsAlive = () => Boolean(settingsWindow && !settingsWindow.isDestroyed());
+
 // ---------------------------------------------------------------- ventanas
 
 function createMascotWindow() {
@@ -116,12 +145,12 @@ function createMascotWindow() {
 
     if (SELFTEST) {
       selfTest = new SelfTest({
-        startCalibration: () => mascotWindow.webContents.send('mascot:calibrate'),
+        startCalibration: () => toMascot('mascot:calibrate'),
         quit: (code) => { process.exitCode = code; app.quit(); },
         // El diagnostico enciende el relay directamente: no hay ventana de
         // ajustes abierta, asi que setPreview() lo apagaria por no haber quien
         // mire, y justamente es lo que se quiere comprobar.
-        setPreview: (on) => mascotWindow?.webContents.send('mascot:preview', on),
+        setPreview: (on) => toMascot('mascot:preview', on),
         calibrationMs: cfg.calibrationMs,
       });
       // Margen para que MediaPipe compile el WASM y la camara arranque.
@@ -177,11 +206,11 @@ function applyMascotVisibility(visible) {
   } else {
     mascotWindow.setSize(1, 1);
   }
-  mascotWindow.webContents.send('mascot:visible', visible);
+  toMascot('mascot:visible', visible);
 }
 
 function openSettingsWindow() {
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
+  if (settingsAlive()) {
     settingsWindow.show();
     settingsWindow.focus();
     return;
@@ -250,7 +279,7 @@ function onPostureFrame(payload) {
     notifier.nag(payload.breakdown);
   }
 
-  mascotWindow?.webContents.send('mascot:state', {
+  toMascot('mascot:state', {
     state: decision.state,
     level: decision.level,
     score: decision.score,
@@ -258,8 +287,8 @@ function onPostureFrame(payload) {
   });
 
   // El panel de depuracion solo consume datos si esta abierto.
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.webContents.send('telemetry', { ...payload, ...decision });
+  if (settingsAlive()) {
+    toSettings('telemetry', { ...payload, ...decision });
   }
 }
 
@@ -292,9 +321,9 @@ function pushConfigToRenderers() {
       decayMs: cfg.soundDecayMs,
     },
   };
-  mascotWindow?.webContents.send('config:update', forRenderer);
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.webContents.send('config:update', cfg);
+  toMascot('config:update', forRenderer);
+  if (settingsAlive()) {
+    toSettings('config:update', cfg);
   }
 }
 
@@ -321,8 +350,8 @@ function stringsPayload() {
 }
 
 function broadcastStrings() {
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.webContents.send('i18n:update', stringsPayload());
+  if (settingsAlive()) {
+    toSettings('i18n:update', stringsPayload());
   }
 }
 
@@ -335,20 +364,42 @@ function broadcastStrings() {
  * portatil empieza a soplar.
  */
 function setPreview(on) {
-  const wanted = on && settingsWindow && !settingsWindow.isDestroyed();
-  mascotWindow?.webContents.send('mascot:preview', Boolean(wanted));
+  const wanted = on && settingsAlive();
+  toMascot('mascot:preview', Boolean(wanted));
 }
 
 function setPaused(paused) {
   manuallyPaused = paused;
+
+  // La pausa apaga la camara de verdad: el renderer para el bucle y suelta el
+  // stream, con lo que el piloto de la webcam se apaga. Antes la pausa solo
+  // dejaba de MIRAR los frames -- la camara seguia encendida y el detector
+  // trabajando para que main los tirase a la basura.
+  toMascot('mascot:paused', paused);
+
   if (paused) {
-    overlay.hide();
-    mascotWindow?.webContents.send('mascot:state', {
+    overlay?.hide();
+    // Sin camara no se puede terminar de calibrar. Se resuelve la peticion en
+    // curso con su motivo en vez de dejarla colgada hasta que expire.
+    cancelPendingCalibration?.({ ok: false, errorKey: 'errors.calibrationPaused' });
+    toMascot('mascot:state', {
       state: STATE.PAUSED, level: 0, score: null, alarmed: false,
     });
+  } else {
+    // Ver PosturePolicy.reset(): sin esto el primer frame tras reanudar trae el
+    // `badSince` de antes de la pausa y dispara el nivel maximo de golpe.
+    policy?.reset();
   }
+
   tray?.refreshMenu();
   tray?.update({ state: STATE.PAUSED, score: null, level: 0, manuallyPaused: paused });
+
+  // La ventana de ajustes tiene su propio boton de pausa. Si la pausa llega
+  // desde la bandeja y no se le cuenta, se queda diciendo "Pausar" -- y con la
+  // capa de calibracion abierta, contando una cuenta atras sin camara detras.
+  if (settingsAlive()) {
+    toSettings('pause:update', paused);
+  }
 }
 
 // -------------------------------------------------------------------- IPC
@@ -426,6 +477,10 @@ function registerIpc() {
   // La calibracion la ejecuta el renderer (es quien tiene los landmarks); aqui
   // solo se lanza y se guarda el resultado.
   ipcMain.handle('calibrate', async () => {
+    // En pausa la camara esta suelta: el renderer rechazaria la captura y esto
+    // se quedaria esperando hasta agotar el tiempo, informando de un fallo de
+    // camara que no es el que ha ocurrido.
+    if (manuallyPaused) return { ok: false, errorKey: 'errors.calibrationPaused' };
     if (!mascotWindow || mascotWindow.isDestroyed()) {
       return { ok: false, errorKey: 'errors.windowNotReady' };
     }
@@ -460,13 +515,16 @@ function registerIpc() {
 
       // Cancelar tiene que llegar hasta el detector: cerrar la capa sin avisarle
       // dejaria la captura corriendo, y al terminar guardaria la base igual.
-      cancelPendingCalibration = () => {
-        mascotWindow?.webContents.send('mascot:calibrate-cancel');
-        settle({ ok: false, cancelled: true });
+      //
+      // Acepta un resultado para quien tenga algo mejor que decir que "se ha
+      // cancelado" -- la pausa, por ejemplo, tiene su propio motivo.
+      cancelPendingCalibration = (result = { ok: false, cancelled: true }) => {
+        toMascot('mascot:calibrate-cancel');
+        settle(result);
       };
 
       ipcMain.on('calibration:done', done);
-      mascotWindow.webContents.send('mascot:calibrate');
+      toMascot('mascot:calibrate');
     });
   });
 
@@ -491,8 +549,8 @@ function registerIpc() {
   ipcMain.on('preview:enable', (_e, on) => setPreview(on));
   ipcMain.on('preview:frame', (_e, dataUrl) => {
     selfTest?.observePreview(dataUrl);
-    if (settingsWindow && !settingsWindow.isDestroyed()) {
-      settingsWindow.webContents.send('preview:update', dataUrl);
+    if (settingsAlive()) {
+      toSettings('preview:update', dataUrl);
     } else if (!selfTest) {
       // Nadie mirando: se apaga en el origen en vez de seguir recibiendo.
       setPreview(false);
@@ -525,8 +583,8 @@ function registerIpc() {
   // aqui solo se guarda para que ajustes pueda pedirla cuando se abra.
   ipcMain.on('cameras:list', (_e, list) => {
     cameras = Array.isArray(list) ? list : [];
-    if (settingsWindow && !settingsWindow.isDestroyed()) {
-      settingsWindow.webContents.send('cameras:update', cameras);
+    if (settingsAlive()) {
+      toSettings('cameras:update', cameras);
     }
   });
   ipcMain.handle('cameras:get', () => cameras);
@@ -567,7 +625,9 @@ if (!app.requestSingleInstanceLock()) {
 
     policy = new PosturePolicy(settings.policyConfig());
     overlay = new DimOverlay();
-    overlay.create();
+    // start() solo se pone a vigilar las pantallas; las ventanas del velo se
+    // crean en el primer show() y se sueltan tras un rato sin usarse.
+    overlay.start();
     overlay.setOpacity(settings.load().dimOpacity);
     overlay.setFades({
       inMs: settings.load().dimFadeInMs,
@@ -593,11 +653,15 @@ if (!app.requestSingleInstanceLock()) {
         // Un perfil sin calibrar no puede puntuar: llevamos al usuario a ello.
         if (!settings.activeBaseline()) openSettingsWindow();
       },
+      // Con la ventana de ajustes ya abierta y cargada, `did-finish-load` no
+      // vuelve a dispararse: esperarlo a secas dejaba el boton de la bandeja
+      // sin hacer nada -- y fugaba un listener por clic.
       onCalibrate: () => {
         openSettingsWindow();
-        settingsWindow.webContents.once('did-finish-load', () =>
-          settingsWindow.webContents.send('ui:start-calibration')
-        );
+        const wc = settingsWindow.webContents;
+        const start = () => toSettings('ui:start-calibration');
+        if (wc.isLoading()) wc.once('did-finish-load', start);
+        else start();
       },
       onSettings: () => openSettingsWindow(),
       onQuit: () => app.quit(),

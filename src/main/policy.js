@@ -47,6 +47,23 @@ class PosturePolicy {
     this.lastScore = null;
   }
 
+  /**
+   * Vuelve al punto de partida. Hace falta al salir de una pausa manual.
+   *
+   * Durante la pausa no llega ningun frame, asi que `badSince` se queda con la
+   * marca del instante anterior a pausar. Al reanudar, `badFor` valdria toda la
+   * pausa -- media hora, si has ido a comer -- y el primer frame con mala
+   * postura saltaria directo al nivel maximo: oscurecer, toast y sonido de
+   * golpe, saltandose la permanencia que existe justo para eso.
+   *
+   * `lastNagAt` NO se toca: el enfriamiento sigue corriendo durante la pausa, y
+   * reiniciarlo seria abrir la puerta a un aviso inmediato al volver.
+   */
+  reset() {
+    this.#pause();
+    this.lastPoseAt = null;
+  }
+
   /** Reajusta umbrales en caliente, sin perder el estado en curso. */
   reconfigure(config) {
     this.config = config;

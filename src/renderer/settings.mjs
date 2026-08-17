@@ -350,6 +350,7 @@ function openCalibration() {
   // Deshacer es de la calibracion que se acaba de hacer, no de la siguiente.
   setHidden($('calib-undo'), true);
   window.api.setPreview(true);
+  startBeat();
   renderCalibration();
   $('calib-cancel').focus();
 }
@@ -357,8 +358,12 @@ function openCalibration() {
 function closeCalibration() {
   const wasCapturing = flow.phase === PHASE.CAPTURING;
   flow.cancel();
+  stopBeat();
   setHidden($('calib'), true);
   window.api.setPreview(false);
+  // El ultimo fotograma se queda en el <img> mientras la ventana siga abierta.
+  // No es mucho, pero es una imagen de tu cara retenida sin que nadie la mire.
+  $('calib-video').removeAttribute('src');
   // Cancelar a mitad de captura tiene que llegar al detector: si no, la
   // captura termina sola y pisa la base anterior pese al "Cancelar".
   if (wasCapturing) window.api.cancelCalibration();
@@ -465,14 +470,35 @@ function renderCalibrationNote() {
     : hint;
 }
 
-/** Late a 20 Hz mientras la capa esta abierta: la telemetria va a 4 Hz y la
-    cuenta atras se veria a saltos si dependiera de ella. */
-setInterval(() => {
-  if (!flow.active) return;
-  const { startCapture } = flow.update({ readiness: latestReadiness, now: performance.now() });
-  renderCalibration();
-  if (startCapture) runCapture();
-}, 50);
+/**
+ * Late a 20 Hz mientras la capa esta abierta: la telemetria va a 4 Hz y la
+ * cuenta atras se veria a saltos si dependiera de ella.
+ *
+ * Y SOLO mientras esta abierta. Antes el temporizador se creaba al cargar el
+ * modulo y no se paraba nunca: veinte despertares por segundo, durante todo el
+ * tiempo que la ventana de ajustes estuviese abierta, para leer una bandera y
+ * volverse a dormir. La comprobacion de `flow.active` estaba dentro, asi que no
+ * se notaba en el comportamiento -- solo en el consumo.
+ */
+let beatTimer = null;
+
+function startBeat() {
+  if (beatTimer !== null) return;
+  beatTimer = setInterval(() => {
+    if (!flow.active) return stopBeat();
+    // En DONE no queda nada que animar: el panel del resultado es estatico y
+    // lo repinta quien lo produce.
+    if (flow.phase === PHASE.DONE) return;
+    const { startCapture } = flow.update({ readiness: latestReadiness, now: performance.now() });
+    renderCalibration();
+    if (startCapture) runCapture();
+  }, 50);
+}
+
+function stopBeat() {
+  clearInterval(beatTimer);
+  beatTimer = null;
+}
 
 async function runCapture() {
   // Cierra la cuenta atras: sin marca sonora del "ya", quien esta mirando a la
@@ -532,6 +558,20 @@ window.api.onStartCalibration(() => $('calibrate').click());
 $('pause').addEventListener('click', async () => {
   paused = await window.api.togglePause();
   renderPause();
+});
+
+/**
+ * La pausa tambien se conmuta desde la bandeja, con esta ventana delante. Sin
+ * escucharlo, el boton se quedaba diciendo "Pausar" con la app ya pausada.
+ *
+ * Y si pillaba a la calibracion abierta era peor: la capa seguia con su cuenta
+ * atras sobre las ultimas comprobaciones recibidas, sin camara detras, para
+ * acabar en un error. Se cierra, que es lo unico honesto que se puede hacer.
+ */
+window.api.onPause((next) => {
+  paused = next;
+  renderPause();
+  if (next && flow.active) closeCalibration();
 });
 
 function renderPause() {

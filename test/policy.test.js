@@ -157,3 +157,63 @@ test('reconfigure aplica umbrales nuevos sin perder el estado', () => {
   assert.equal(lastOf(run(policy, { score: 65, ms: 500, clock })).state, STATE.BAD,
     'con el umbral 80 si lo es');
 });
+
+// -------------------------------------------------- reanudar tras una pausa
+
+test('reanudar no dispara el nivel maximo por la pausa entera', () => {
+  // Pausar en mala postura, comer, volver y seguir encorvado. Sin reset(), el
+  // `badSince` de antes de la pausa hacia que `badFor` valiese media hora: el
+  // primer frame al volver saltaba a FULL -- oscurecer, toast y sonido -- sin
+  // la permanencia que existe justo para eso.
+  const { policy, clock } = newRun();
+  const antes = run(policy, { score: 30, ms: 20_000, clock });
+  assert.equal(lastOf(antes).level, LEVEL.FULL, 'deberia haber llegado a FULL antes de pausar');
+
+  // Media hora de pausa: durante ella no llega ningun frame.
+  policy.reset();
+  clock.t += 30 * 60_000;
+
+  const primero = policy.update({ score: 30, now: clock.t });
+  // La mala postura se reconoce al instante -- eso es correcto, el icono de la
+  // bandeja tiene que decir la verdad. Lo que NO puede pasar es que la
+  // permanencia venga ya cumplida.
+  assert.equal(primero.state, STATE.BAD);
+  assert.equal(primero.level, LEVEL.TRAY, 'la permanencia venia ya cumplida por la pausa');
+  assert.equal(primero.badForMs, 0, 'el cronometro de permanencia arranca de cero');
+  assert.equal(primero.surfaces.dim, false);
+  assert.equal(primero.surfaces.toast, false);
+  assert.equal(primero.surfaces.sound, false);
+
+  // Y el escalado vuelve a recorrerse entero, con sus tiempos.
+  const tras2s = run(policy, { score: 30, ms: 2_000, clock });
+  assert.equal(lastOf(tras2s).level, LEVEL.TRAY, 'aun no toca inquietar al personaje');
+  const hastaElFinal = run(policy, { score: 30, ms: 10_000, clock });
+  assert.equal(lastOf(hastaElFinal).level, LEVEL.FULL);
+});
+
+test('reset conserva el enfriamiento de los avisos', () => {
+  // El enfriamiento sigue corriendo durante la pausa. Reiniciarlo permitiria un
+  // toast a los pocos segundos de volver, justo despues de haber avisado.
+  const { policy, clock } = newRun();
+  const antes = run(policy, { score: 30, ms: 20_000, clock });
+  assert.ok(anyToast(antes), 'tiene que haber avisado antes de pausar');
+
+  policy.reset();
+  clock.t += 2_000; // pausa corta, dentro del enfriamiento
+
+  // Se vuelve a encorvar y se cumple la permanencia otra vez.
+  const despues = run(policy, { score: 30, ms: 20_000, clock });
+  assert.equal(lastOf(despues).level, LEVEL.FULL, 'la permanencia si vuelve a cumplirse');
+  assert.equal(anyToast(despues), false, 'el enfriamiento se ha perdido con el reset');
+});
+
+test('reset deja la ausencia contando de nuevo', () => {
+  // `lastPoseAt` tambien se limpia: si no, al reanudar tras una pausa larga el
+  // primer frame sin nadie delante vendria ya "ausente desde hace media hora".
+  const { policy, clock } = newRun();
+  run(policy, { score: 90, ms: 2_000, clock });
+
+  policy.reset();
+  assert.equal(policy.lastPoseAt, null);
+  assert.equal(policy.state, STATE.PAUSED);
+});
